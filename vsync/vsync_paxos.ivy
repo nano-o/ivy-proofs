@@ -1,0 +1,341 @@
+#lang ivy1.7
+
+# We model how a single configuration (also called epoch) of VSync Paxos operates.
+# For simplicity, a reconfiguration command consists only of an instance number representing the prefix of the log that has to be transfered to the new configuration. The safety properties are: (a) decisions are unique per instance, (b) the decided reconfiguration command is unique, and (c) no value is decided in an instance bigger than the one in the reconfiguration command (i.e. no decided values are lost when the log is transfered).
+
+# The protocol can be seen as an instance of single-decree Paxos making a reconfiguration decision, i.e. deciding on what is the last log position of the current configuration, with the additional requirement that no log position higher than that may receive a decided value.
+
+# The proof is structured in two refinement steps. First we prove correct an abstract version of the protocol in which nodes can atomically read each other's memory. Then we prove that the more concrete model in which nodes send each other messages refines the more abstract one.
+
+# Verification is successful in EPR.
+
+include order
+
+type node
+type value
+type quorum
+instance stake : unbounded_sequence
+instance inst : unbounded_sequence # these are log positions
+
+relation member(N:node, Q:quorum)
+trusted isolate quorum_intersection = {
+    axiom forall Q1, Q2. exists N. member(N, Q1) & member(N, Q2)
+}
+
+isolate abstract_protocol = {
+    
+    # part of the state relevant to the reconfiguration decision:
+    relation wedge_msg(S:stake) # equivalent of 1a msg in single-decree Paxos
+    relation accept_msg(S:stake, I:inst) # equivalent of proposal (2a) in single-decree Paxos.
+    relation start_msg(N:node, S:stake, I:inst) # equivalent of vote (2b) in single-decree Paxos.
+    relation reconfiguration_decision(N:node, I:inst) # N decides to stop the current configuration at instance I
+    relation left_stake(N:node, S:stake)
+    relation wedged_msg(N:node, S:stake)
+    relation wedged(N:node) 
+
+    # part of the state relevant to deciding values at positions in the log:
+    relation vote(N:node, I:inst, V:value)
+    relation decision(N:node, I:inst, V:value)
+
+    after init {
+        wedge_msg(S) := false;
+        accept_msg(S,I) := false;
+        start_msg(N,S,I) := false;
+        vote(N,I,V) := false;
+        decision(N,I,V) := false;
+        reconfiguration_decision(N, I) := false;
+        left_stake(N,S) := false;
+        wedged_msg(N,S) := false;
+        wedged(N) := false;
+    }
+
+    # a node initiates reconfiguration with stake r:
+    action send_wedge(s:stake) = {
+        require s ~= 0;
+        wedge_msg(s) := true
+    }
+
+    # a node acks reconfiguration with stake r:
+    action join_stake(n:node, s:stake) = {
+        require s ~= 0;
+        require wedge_msg(s);
+        require ~left_stake(n,s);
+        
+        wedged_msg(n,s) := true;
+        wedged(n) := true;
+        left_stake(n,S) := left_stake(n,S) | S < s;
+    }
+
+    # the initiator of reconfiguration with stake r (which is unique) receives a quorum of "wedged" messages and sends an accept message:
+    action receive_wedged_msgs(s:stake, q:quorum, maxs:stake, max_voted:inst, max_reconfig_vote:inst) = {
+        require s ~= 0;
+        require ~accept_msg(s,I);
+        require forall N. member(N,q) -> wedged_msg(N,s);
+
+        # maxs is the max stake reported with corresponding reconfiguration vote of max_reconfig_vote
+        # this is where we directly access start_msg, where we should instead get the information from the wedged_msgs (see isolate more_concrete_protocol)
+        require 
+            (maxs = 0 & forall N,S,I1. member(N, q) & S < s -> ~start_msg(N, S, I1)) |
+            (maxs ~= 0 & maxs < s &
+                (exists N. member(N, q) & start_msg(N, maxs, max_reconfig_vote)) &
+                (forall N,S,I1. member(N, q) & start_msg(N, S, I1) & S < s -> S <= maxs));
+        
+        # if maxs = 0, then max_voted is the highest voted instance reported:
+        require
+            (exists N,V . member(N,q) & vote(N,max_voted,V)) &
+            (forall N,I,V . member(N,q) & vote(N,I,V) -> I <= max_voted);
+
+        var proposal:inst;
+        if (maxs = 0) {
+            proposal := max_voted;
+        }
+        else {
+            proposal := max_reconfig_vote;
+        };
+
+        accept_msg(s, proposal) := true; # propose to stop the current configuration at log position "proposal" 
+    }
+
+    # try to change configuration copyin the log up to i:
+    action send_start_msg(n:node, i:inst, s:stake) = {
+        require s ~= 0;
+        require ~left_stake(n,s);
+        require accept_msg(s, i);
+        start_msg(n, s, i) := true
+    }
+
+    # start the new configuration from log position i (i.e. the log up to i has to be transferred to the new config)
+    action start_new_config(n:node, s:stake, i:inst, q:quorum) = {
+        require member(N,q) -> start_msg(N, s, i);
+        reconfiguration_decision(n, i) := true
+    }
+
+    # vote for deciding value v at position i in the log
+    action do_vote(n:node, i:inst, v:value) = {
+        require i ~= 0;
+        require ~wedged(n);
+        require vote(N, i, V) -> V = v; # here we abstract over how values are proposed (i.e. with a leader or round-robin). We just assume that some mechanism ensures that any node that votes for a value at instance i votes for the same value.
+        vote(n, i, v) := true;
+    }
+
+    # decide a value at position i in the log:
+    action decide(n:node, v:value, q:quorum, i:inst) = {
+        require member(N, q) -> vote(N, i, v);
+        decision(n, i, v) := true
+    }
+
+    specification {
+        # first, there is agreement on the last index of the log to copy:;
+        conjecture (
+            reconfiguration_decision(N1,I1) &
+            reconfiguration_decision(N2,I2)
+        ) -> I1 = I2
+        
+        # second, there is agreement on decisions:
+        conjecture (
+            decision(N1,I,V1) &
+            decision(N2,I,V2)
+        ) -> V1 = V2
+
+        # third, no decision is made after the last index to copy:
+        conjecture ~(reconfiguration_decision(N,I1) & I1 < I2 & decision(N,I2,V))
+
+    }
+    
+    private { # supporting invariants:
+        conjecture accept_msg(S,I1) & accept_msg(S,I2) -> I1 = I2
+        conjecture start_msg(N,S,I) -> accept_msg(S,I)
+        conjecture reconfiguration_decision(N,I) -> exists Q, S . forall N. member(N, Q) -> start_msg(N,S,I)
+
+        conjecture ~start_msg(N,0,I)
+        conjecture ~accept_msg(0,I)
+        conjecture wedged_msg(N,S2) & S1 < S2 -> left_stake(N,S1)
+        conjecture wedged_msg(N,S) -> wedged(N)
+
+        conjecture S1 < S2 & accept_msg(S2,I2) & I1 ~= I2 ->
+            exists N. member(N,Q) & left_stake(N,S1) & ~start_msg(N,S1,I1)
+        
+        conjecture vote(N,I,V1) & vote(N,I,V2) -> V1=V2
+        conjecture decision(N,I,V) -> exists Q . forall N2 . member(N2,Q) -> vote(N2,I,V)
+
+        conjecture accept_msg(S,I) -> exists Q . forall N . member(N,Q) -> (wedged(N) & forall I2,V . ~(vote(N,I2,V) & I < I2))
+    }
+
+} with quorum_intersection, stake, inst # here we bring in the ordering properties of stakes and instances, as well as the quorum intersection axiom
+
+# now we model more explicitely the "wedged" messages and we get rid of ghost relations
+isolate more_concrete_protocol = {
+
+    # part of the state relevant to the reconfiguration decision:
+    relation wedge_msg(S:stake)
+    relation wedged_msg(N:node, S:stake, MAXS:stake, MAXI1:inst, MAXI2:inst) # MAXI1 is the maximum reconfiguration vote while MAXI2 is the maximum position in the log for which the node voted to decide a value (we should always have MAXI2 <= MAXI1).
+    relation accept_msg(S:stake, I:inst)
+    relation start_msg(N:node, S:stake, I:inst)
+    relation reconfiguration_decision(N:node, I:inst)
+    individual current_stake(N:node) : stake
+    relation wedged(N:node)
+    individual one:stake # TODO: use 0 instead (see paxos.ivy)
+ 
+    # part of the state relevant to deciding values at positions in the log:
+    relation vote(N:node, I:inst, V:value)
+    relation decision(N:node, I:inst, V:value)
+    
+    after init {
+        wedge_msg(S) := false;
+        accept_msg(S,I) := false;
+        start_msg(N,S,I) := false;
+        vote(N,I,V) := false;
+        decision(N,I,V) := false;
+        reconfiguration_decision(N, I) := false;
+        wedged_msg(N, S, MAXS, I1, I2) := false;
+        wedged(N) := false;
+        one := stake.next(0);
+        current_stake(N) := one; # we use 0 as special value, and thus we start at 1.
+    }
+
+    # a node initiates reconfiguration with stake r:
+    action send_wedge(s:stake) = {
+        require s ~= 0;
+        wedge_msg(s) := true;
+        
+        call abstract_protocol.send_wedge(s); # those are ghost calls for the refinement proof. Essentially, those ghost calls assert the preconditions of the abstract protocol, update the abstract protocol state, and establish the specification invariants of the ghost protocol.
+    }
+
+    # a node acks reconfiguration with stake r:
+    action join_stake(n:node, s:stake, maxs:stake, maxi1:inst, maxi2:inst) = {
+        require wedge_msg(s);
+        require current_stake(n) < s;
+
+        require
+            (maxs = 0 & forall S,I . ~start_msg(n, S, I)) | # never voted for a reconfiguration
+            (maxs ~= 0 & start_msg(n, maxs, maxi1) &
+                forall S, I. start_msg(n, S, I) -> S < maxs);
+
+        require
+            (exists V . vote(n, maxi2, V)) &
+            forall I,V . vote(n, I, V) -> I <= maxi2; # maxi2 is the maximum position in the log at which n voted for a value
+        
+        wedged_msg(n, s, maxs, maxi1, maxi2) := true; # send wedged message
+        wedged(n) := true;
+        current_stake(n) := s;
+
+        call abstract_protocol.join_stake(n, s);
+    }
+
+    # the initiator of reconfiguration with stake r (which is unique) receives a quorum of "wedged" messages and sends an accept message:
+    action receive_wedged_msgs(s:stake, q:quorum, maxs:stake, max_voted:inst, max_reconfig_vote:inst) = {
+        require ~accept_msg(s,I);
+        require forall N. member(N,q) -> exists S,I1,I2. wedged_msg(N,s,S,I1,I2);
+
+        # maxs is the max stake reported with corresponding reconfiguration vote of max_reconfig_vote:
+        require 
+            (maxs = 0 & forall N. member(N, q) -> exists I1,I2 . wedged_msg(N, s, 0, I1, I2)) |
+            (maxs ~= 0 & maxs < s &
+                (exists N, I2. member(N, q) & wedged_msg(N, s, maxs, max_reconfig_vote, I2)) &
+                (forall N,S,I1,I2. member(N, q) & wedged_msg(N, s, S, I1, I2) -> S <= maxs));
+        
+        # max_voted is the highest voted instance reported:
+        require
+            (exists N,S,I1 . member(N,q) & wedged_msg(N, s, S, I1, max_voted)) &
+            (forall N,S,I1,I2 . member(N,q) & wedged_msg(N, s, S, I1, I2) -> I2 <= max_voted);
+
+        var proposal:inst;
+        if (maxs = 0) {
+            proposal := max_voted;
+        }
+        else {
+            proposal := max_reconfig_vote;
+        };
+
+        accept_msg(s, proposal) := true; # propose to stop the current configuration at log position "proposal"
+
+        call abstract_protocol.receive_wedged_msgs(s, q, maxs, max_voted, max_reconfig_vote);
+    }
+
+    # try to change configuration copying the log up to i:
+    action send_start_msg(n:node, i:inst, s:stake) = {
+        require current_stake(n) = s;
+        require accept_msg(s, i);
+        start_msg(n, s, i) := true;
+
+        call abstract_protocol.send_start_msg(n, i, s);
+    }
+
+    # start the new configuration from log position i (i.e. the log up to i has to be transferred to the new config)
+    action start_new_config(n:node, s:stake, i:inst, q:quorum) = {
+        require member(N,q) -> start_msg(N, s, i);
+        reconfiguration_decision(n, i) := true;
+
+        call abstract_protocol.start_new_config(n, s, i ,q);
+    }
+
+    # vote for deciding value v at position i in the log
+    action do_vote(n:node, i:inst, v:value) = {
+        require i ~= 0;
+        require ~wedged(n);
+        require vote(N, i, V) -> V = v; # here we abstract over how values are proposed (i.e. with a leader or round-robin). We just assume that some mechanism ensures that any node that votes for a value at instance i votes for the same value.
+        vote(n, i, v) := true;
+
+        call abstract_protocol.do_vote(n, i, v);
+    }
+
+    # decide a value at position i in the log:
+    action decide(n:node, v:value, q:quorum, i:inst) = {
+        require member(N, q) -> vote(N, i, v);
+        decision(n, i, v) := true;
+
+        call abstract_protocol.decide(n, v, q, i);
+    }
+    
+    export send_wedge
+    export join_stake
+    export receive_wedged_msgs
+    export send_start_msg
+    export start_new_config
+    export do_vote
+    export decide
+    
+    # first, there is agreement on the last index of the log to copy:
+    conjecture (
+        reconfiguration_decision(N1,I1) &
+        reconfiguration_decision(N2,I2)
+    ) -> I1 = I2
+
+    # second, there is agreement on decisions:
+    conjecture (
+        decision(N1,I,V1) &
+        decision(N2,I,V2)
+    ) -> V1 = V2
+
+    # third, no decision is made after the last index to copy:
+    conjecture ~(reconfiguration_decision(N,I1) & I1 < I2 & decision(N,I2,V))
+
+    # now the supporting invariants:
+    
+    conjecture ~start_msg(N,0,I)
+    conjecture ~accept_msg(0,I)
+
+    conjecture current_stake(N) > 0
+    conjecture wedged_msg(N, S1, MAXS, I1, I2) -> wedged(N)
+    conjecture wedged_msg(N, S1, MAXS, I1, I2) -> S1 <= current_stake(N)
+    conjecture wedged_msg(N, S1, MAXS, I1, I2) & MAXS ~= 0 -> (start_msg(N, MAXS, I1) & forall S,I . MAXS < S & S < S1 -> ~start_msg(N, S, I))
+    conjecture wedged_msg(N, S1, 0, I1, I2) & S < S1 -> ~start_msg(N, S, I)
+    conjecture ~start_msg(N,0,I)
+    conjecture wedged_msg(N, S1, MAXS, I1, I2) -> MAXS < S1
+    conjecture wedged_msg(N, S1, S2, I1, I2) & I2 < I -> ~vote(N, I, V)
+    conjecture wedged_msg(N, S1, S2, I1, I2) -> exists V . vote(N, I2, V)
+    
+    # conjectures linking abstract and concrete state:
+    conjecture wedge_msg(S) <-> abstract_protocol.wedge_msg(S)
+    conjecture accept_msg(S,I) <-> abstract_protocol.accept_msg(S,I)
+    conjecture start_msg(N,S,I) <-> abstract_protocol.start_msg(N,S,I)
+    conjecture vote(N,I,V) <-> abstract_protocol.vote(N,I,V)
+    conjecture decision(N,I,V) <-> abstract_protocol.decision(N,I,V)
+    conjecture current_stake(N) <= S -> ~abstract_protocol.left_stake(N,S)
+    conjecture S < current_stake(N) & S ~= 0 -> abstract_protocol.left_stake(N,S)
+    conjecture current_stake(N) > one -> abstract_protocol.wedged_msg(N,current_stake(N))
+    conjecture wedged(N) <-> abstract_protocol.wedged(N)
+    conjecture reconfiguration_decision(N,I) <-> abstract_protocol.reconfiguration_decision(N,I)
+    conjecture wedged_msg(N, S1, MAXS, I1, I2) -> abstract_protocol.wedged_msg(N, S1)
+    
+} with abstract_protocol, stake, inst
