@@ -19,7 +19,7 @@ instance slot : unbounded_sequence
 
 type decrees # partial map from slot to value
 function decree_value(M:decrees, S:slot) : value
-#relation decree_present(M:decrees, S:slot)
+relation decree_present(M:decrees, S:slot)
 
 type votes # partial map from slot to ballot and value
 function vote_value(M:votes, S:slot) : value
@@ -78,15 +78,32 @@ isolate protocol = {
                     (exists A,S,VS . member(A,q) & 1b_msg(A,b,VS) & vote_ballot(VS,S) = vote_ballot(vs,S) & vote_value(VS,S) = vote_value(vs,S)) 
                     & forall A,S,VS . member(A,q) & 1b_msg(A,b,VS) -> vote_ballot(VS,S) <= vote_ballot(vs,S);
                 require # if a slot has a max vote that is not 0, then the decree must be equal to the corresponding value
-                    vote_ballot(vs,S) ~= 0 -> decree_value(ds,S) = vote_value(vs,S);
-                2a_msg(p, b, vs) := true # send the 2a message
-                # TODO: here we need the partial map
+                    vote_ballot(vs,S) ~= 0 -> decree_present(ds,S) & decree_value(ds,S) = vote_value(vs,S);
+                2a_msg(p, b, ds) := true # send the 2a message
+                # note that the slots that had no votes can have a proposal or not, depending on whether decree_present is true or false.
             }
         }
-        
+    }
+
+    action phase_2b(a:acceptor, b:ballot) = {
+        require b >= a_bal(a);
+        local ds:decrees {
+            require exists P . 2a_msg(P, b, ds);
+            a_bal(a) := b;
+            a_voted(a, B, S, V) := (~decree_present(ds, S) & a_voted(a,B,S,V)) | (decree_present(ds,S) & B = b & V = decree_value(ds,S));
+            2b_msg(a, b, ds) := true;
+        }
     }
 
     export phase_1a
     export phase_1b
     export phase_2a
+    export phase_2b
+
+    conjecture 2a_msg(P1, B, DS1) & 2a_msg(P2, B, DS2) -> DS1 = DS2
+    conjecture 2b_msg(A, B, DS) -> exists DS, P . 2a_msg(P, B, DS)
+    conjecture ~1b_msg(A,0,VS)
+    conjecture ~2a_msg(P,0,DS)
+    conjecture ~2b_msg(A,0,DS)
+
 } with ballot, slot
