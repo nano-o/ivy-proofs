@@ -1,0 +1,92 @@
+#lang ivy1.7
+
+# This is a specification of multi-paxos following the presentation of Chand, Liu, and Stoller.
+# There are some difference with the specification of Chand et al.: we use ballot 0 as special value instead of -1, and a_bal and p_bal both start at 0. Round 0 never sees any proposal because 1b messages with round 0 are always rejected.
+
+# COMMENTS
+## The phase_1a action seems a little too non-deterministic: the comments say to pick a new ballot, but the action itself picks an arbitrary ballot. In the version with preemption, the 1a action does not update the ballot the at all.
+
+include order
+#include partial_map
+
+type proposer
+type acceptor
+type value
+type quorum
+instance ballot : unbounded_sequence
+instance slot : unbounded_sequence 
+#instance decrees : partial_map(slot, value, 0)
+
+type decrees # partial map from slot to value
+function decree_value(M:decrees, S:slot) : value
+#relation decree_present(M:decrees, S:slot)
+
+type votes # partial map from slot to ballot and value
+function vote_value(M:votes, S:slot) : value
+function vote_ballot(M:votes, S:slot) : ballot
+#relation vote_present(M:votes, S:slot)
+
+relation member(A:acceptor, Q:quorum)
+trusted isolate quorum_intersection = {
+    axiom exists A. member(A, Q1) & member(A, Q2)
+    # note that unbound all-capitals identifiers are implicitely universally quantified in Ivy
+}
+
+isolate abstract_protocol = {
+}
+
+isolate protocol = {
+    function a_bal(A:acceptor) : ballot
+    function p_bal(P:proposer) : ballot 
+    relation a_voted(A:acceptor, B:ballot, S:slot, V:value)
+    # we represent the state of the network with one relation for each message type
+    relation 1a_msg(P:proposer, B:ballot)
+    relation 1b_msg(A:acceptor, B:ballot, VS:votes)
+    relation 2a_msg(P:proposer, B:ballot, DS:decrees)
+    relation 2b_msg(A:acceptor, B:ballot, DS:decrees)
+
+    after init {
+        a_bal(A) := 0;
+        p_bal(P) := 0;
+        a_voted(A,B,S,V) := false;
+        1a_msg(P,B) := false;
+        1b_msg(P,B,VS) := false;
+        2a_msg(P,B,DS) := false;
+        2b_msg(A,B,DS) := false;
+    }
+
+    action phase_1a(p:proposer, b:ballot) = {
+        p_bal(p) := b;
+        1a_msg(p,b) := true;
+    }
+
+    action phase_1b(a:acceptor, b:ballot) = {
+        require b > a_bal(a) & exists P . 1a_msg(P, b);
+        local vs:votes { # create a map containing the votes of the acceptor:
+            require (vote_value(vs,S) = V & vote_ballot(vs,S) = B) <-> (a_voted(a,B,S,V));
+            1b_msg(a, b, vs) := true; # send 1b message
+            a_bal(a) := b; # update the acceptor's ballot
+        }
+    }
+
+    action phase_2a(p:proposer, b:ballot) = {
+        require ~(2a_msg(P, b, DS)); # nobody ever sent a 2a message for this ballot
+        local q:quorum { 
+            require member(A,q) -> exists VS . 1b_msg(A, b, VS); # quorum q responded with 1b messages
+            local vs : votes, ds : decrees {
+                require # vs contains the max votes among q for each slot
+                    (exists A,S,VS . member(A,q) & 1b_msg(A,b,VS) & vote_ballot(VS,S) = vote_ballot(vs,S) & vote_value(VS,S) = vote_value(vs,S)) 
+                    & forall A,S,VS . member(A,q) & 1b_msg(A,b,VS) -> vote_ballot(VS,S) <= vote_ballot(vs,S);
+                require # if a slot has a max vote that is not 0, then the decree must be equal to the corresponding value
+                    vote_ballot(vs,S) ~= 0 -> decree_value(ds,S) = vote_value(vs,S);
+                2a_msg(p, b, vs) := true # send the 2a message
+                # TODO: here we need the partial map
+            }
+        }
+        
+    }
+
+    export phase_1a
+    export phase_1b
+    export phase_2a
+} with ballot, slot
