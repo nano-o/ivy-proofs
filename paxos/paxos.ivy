@@ -1,5 +1,7 @@
 #lang ivy1.7
 
+#TODO: Prove validity!
+
 include order
 
 type node
@@ -15,7 +17,6 @@ trusted isolate quorum_intersection = {
 # first, the absract protocol:
 isolate abs = {
     relation one_a(R:round)
-    relation one_b(N:node, R:round) 
     relation left_rnd(N:node, R:round) 
     relation proposal(R:round, V:value) 
     relation vote(N:node, R:round, V:value) 
@@ -23,7 +24,6 @@ isolate abs = {
 
     after init {    
         one_a(R) := false;
-        one_b(N,R) := false;
         left_rnd(N,R) := false;
         proposal(R,V) := false;
         vote(N,R,V) := false;
@@ -38,7 +38,6 @@ isolate abs = {
     action join_round(n:node, r:round) = {
         require one_a(r);
         require ~left_rnd(n,r);
-        one_b(n,r) := true;
         left_rnd(n,R) := left_rnd(n,R) | R < r
     }
     
@@ -96,6 +95,8 @@ isolate abs = {
 isolate protocol = {
 
     # We now introduce explicit one_b messages that contain the maximum round at which the sender voted and the corresponding value.
+
+    # note that round 0 is never "used" because 1b messages with round 0 are rejected and thus no leader can execute phase 2a for round 0.
     
     relation one_a(R:round)
     relation one_b(N:node, R:round, MAXR:round, MAXV:value) 
