@@ -5,6 +5,7 @@
 ## We use ballot 0 as special ballot instead of -1, and a_bal and p_bal both start at 0.
 ## Instead of a set of messages, we represent the state of the network using the *_msg relations. 
 ## Instead of a set of tuples, we represent sets of votes or decrees using an abstract type of partial maps (where the *_present function indicates whether something is in the domain or not).
+## There is a decide action and a decision relation to track decisions
 
 
 # COMMENTS
@@ -76,6 +77,7 @@ isolate abstract_protocol = {
     action cast_vote(a:acceptor, b:ballot, ds:decrees) = {
         require ~left_ballot(a,b);
         require decree_present(ds, S) & decree_value(ds, S) = V -> proposal(S,b,V);
+        require proposal(S,b,V) -> decree_present(ds, S);
         vote(a, S, b, V) := decree_present(ds,S) & decree_value(ds,S) = V;
         call join_ballot(a,b);
     }
@@ -87,32 +89,30 @@ isolate abstract_protocol = {
 
     specification {
         # the agreement property:
-        # conjecture (
-        #       decision(S,V1) &
-        #       decision(S,V2)
-        # ) -> V1 = V2
+        invariant (
+              decision(S,V1) &
+              decision(S,V2)
+        ) -> V1 = V2
  
-        conjecture one_b(A,B2) & B1 < B2 -> left_ballot(A,B1)
-
-        # proposals are unique per slot and ballot
-        conjecture proposal(S,B,V1) & proposal(S,B,V2) -> V1 = V2
-
-        # only vote for proposed values
-        conjecture vote(A,S,B,V) -> proposal(S,B,V)
-
+        invariant one_b(A,B2) & B1 < B2 -> left_ballot(A,B1)
     }
 
     private {
+
+        # proposals are unique per slot and ballot
+        invariant proposal(S,B,V1) & proposal(S,B,V2) -> V1 = V2
+
+        # only vote for proposed values
+        invariant vote(A,S,B,V) -> proposal(S,B,V)
+
         # Properties of choosable and proposal
-        conjecture B1 < B2 & proposal(S,B2,V2) & V1 ~= V2 ->
+        invariant B1 < B2 & proposal(S,B2,V2) & V1 ~= V2 ->
             exists A . member(A,Q) & left_ballot(A,B1) & ~vote(A,S,B1,V1)
 
         # decisions come from quorums of vote
-        conjecture decision(S,V) -> exists Q,B . forall A . member(A,Q) -> vote(A,S,B,V)
+        invariant decision(S,V) -> exists Q,B . forall A . member(A,Q) -> vote(A,S,B,V)
 
     }
-
-    export decide
 
 } with ballot, slot, quorum_intersection
 
@@ -126,6 +126,7 @@ isolate protocol = {
     relation 1b_msg(A:acceptor, B:ballot, VS:votes)
     relation 2a_msg(P:proposer, B:ballot, DS:decrees)
     relation 2b_msg(A:acceptor, B:ballot, DS:decrees)
+    relation decision(S:slot, V:value)
 
     after init {
         a_bal(A) := 0;
@@ -135,6 +136,7 @@ isolate protocol = {
         1b_msg(P,B,VS) := false;
         2a_msg(P,B,DS) := false;
         2b_msg(A,B,DS) := false;
+        decision(S,V) := false;
     }
 
     action phase_1a(p:proposer, b:ballot) = {
@@ -179,16 +181,26 @@ isolate protocol = {
         call abstract_protocol.cast_vote(a, b, ds);
     }
 
+    action decide(q:quorum,s:slot, b:ballot, v:value) = {
+        require member(A,q) -> exists DS. 2b_msg(A,b,DS) & decree_present(DS,S) & decree_value(DS,S) = v;
+        decision(s, v) := true;
+        call abstract_protocol.decide(q, s, b, v);
+    }
+
     export phase_1a
     export phase_1b
     export phase_2a
     export phase_2b
+    export decide
 
     # the agreement property:
-    # conjecture (
-    #     (forall A. member(A,Q1) -> exists DS . 2b_msg(A,B1,DS) & decree_value(DS,S) = V1) &
-    #     (forall A. member(A,Q2) -> exists DS . 2b_msg(A,B2,DS) & decree_value(DS,S) = V2)
-    # ) -> V1 = V2
+    invariant (
+        decision(S,V1) &
+        decision(S,V2)
+    ) -> V1 = V2
+
+    # decisions:
+    invariant decision(S,V) -> abstract_protocol.decision(S,V)
 
     # a_bal, left_ballot, and one_b:
     invariant a_bal(A) <= R -> ~abstract_protocol.left_ballot(A,R)
@@ -199,7 +211,7 @@ isolate protocol = {
 
     # 2a messages and proposals:
     invariant 2a_msg(P,B,DS) & decree_present(DS,S) -> abstract_protocol.proposal(S,B,decree_value(DS,S))
-    invariant (exists S,V . abstract_protocol.proposal(S,B,V)) -> exists P,DS. 2a_msg(P,B,DS)
+    invariant abstract_protocol.proposal(S,B,V) -> exists P,DS. 2a_msg(P,B,DS) & decree_value(DS,S) = V & decree_present(DS,S)
 
     # 2b messages and votes:
     invariant (2b_msg(A,B,DS) & decree_present(DS,S)) -> abstract_protocol.vote(A,S,B,decree_value(DS,S))
