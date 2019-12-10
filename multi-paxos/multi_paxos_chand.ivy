@@ -1,7 +1,11 @@
 #lang ivy1.7
 
 # This is a specification of multi-paxos following the presentation of Chand, Liu, and Stoller.
-# There are some difference with the specification of Chand et al.: we use ballot 0 as special ballot instead of -1, and a_bal and p_bal both start at 0.
+# There are some difference with the specification of Chand et al.:
+## We use ballot 0 as special ballot instead of -1, and a_bal and p_bal both start at 0.
+## Instead of a set of messages, we represent the state of the network using the *_msg relations. 
+## Instead of a set of tuples, we represent sets of votes or decrees using an abstract type of partial maps (where the *_present function indicates whether something is in the domain or not).
+
 
 # COMMENTS
 ## The phase_1a action seems a little too non-deterministic: the comments say to pick a new ballot, but the action itself picks an arbitrary ballot. In the version with preemption, the 1a action does not update the ballot the at all.
@@ -34,72 +38,81 @@ trusted isolate quorum_intersection = {
 }
 
 isolate abstract_protocol = {
-    relation one_a(B:ballot)
     relation one_b(A:acceptor, B:ballot) 
     relation left_ballot(A:acceptor, B:ballot) 
     relation proposal(S:slot, B:ballot, V:value) 
     relation vote(A:acceptor, S:slot, B:ballot, V:value) 
+    relation decision(S:slot, V:value)
 
     after init {    
-        one_a(B) := false;
-        one_b(N,B) := false;
-        left_ballot(N,B) := false;
+        one_b(A,B) := false;
+        left_ballot(A,B) := false;
         proposal(B,S,V) := false;
-        vote(N,S,B,V) := false;
-    }
-
-    action send_1a(r:ballot) = {
-        # the proposer for ballot r sends a message asking acceptors to join the ballot
-        one_a(r) := true
+        vote(A,S,B,V) := false;
+        decision(S,V) := false;
     }
 
     action join_ballot(a:acceptor, b:ballot) = {
-        require one_a(b);
         require ~left_ballot(a,b);
+        left_ballot(a,B) := left_ballot(a,B) | B < b;
         one_b(a,b) := true;
-        left_ballot(a,B) := left_ballot(a,B) | B < b
     }
     
-    action propose(b:ballot, q:quorum, vs:votes) = {
+    action propose(b:ballot, q:quorum, ds:decrees) = {
         require ~proposal(S,b,V);
-        require forall N, B . member(N, q) & B < b -> left_ballot(N,B);
-
-        require (forall A,B,V. ~(member(A, q) & B < b & vote(A,S,B,V))) |
-           (vote_present(vs,S) &
-           (exists A. member(A, q) & vote_ballot(vs,S) < b & vote(A,S,vote_ballot(vs,S),vote_value(vs,S))) &
-           (forall A,B,V. (member(A, q) & B  < b & vote(A,S,B,V)) -> B <= vote_ballot(vs,S)));
-        proposal(S, b, V) := vote_present(vs,S) & V = vote_value(vs,S)
+        require member(A, q) -> one_b(A,b);
+        
+        local vs:votes { # vs contains all the obligatory votes
+            assume 
+               (~vote_present(vs,S) & forall A,B,V. ~(member(A, q) & B < b & vote(A,S,B,V)))
+               |  (vote_present(vs,S) & vote_ballot(vs,S) < b &
+                  (exists A. member(A, q) & vote(A,S,vote_ballot(vs,S),vote_value(vs,S))) &
+                  (forall A,B,V. (member(A, q) & B  < b & vote(A,S,B,V)) -> B <= vote_ballot(vs,S)));
+            require vote_present(vs,S) -> (decree_present(ds,S) & decree_value(ds,S) = vote_value(vs,S));
+            proposal(S, b, V) := decree_present(ds,S) & V = decree_value(ds,S)
+        }
+    }
+    
+    action cast_vote(a:acceptor, b:ballot, ds:decrees) = {
+        require ~left_ballot(a,b);
+        require decree_present(ds, S) & decree_value(ds, S) = V -> proposal(S,b,V);
+        vote(a, S, b, V) := decree_present(ds,S) & decree_value(ds,S) = V;
+        call join_ballot(a,b);
     }
 
-    action cast_vote(a:acceptor, b:ballot) = {
-        require ~left_ballot(a,b);
-        vote(a, S, b, V) := proposal(S, b, V);
+    action decide(q:quorum, s:slot, b:ballot, v:value) = {
+        require member(A,q) -> vote(A,s,b,v);
+        decision(s, v) := true;
     }
 
     specification {
-        # safety property:
-        conjecture (
-            (forall A. member(A,Q1) -> vote(A,S,B1,V1)) &
-            (forall A. member(A,Q2) -> vote(A,S,B2,V2))
-        ) -> V1 = V2
-    }
+        # the agreement property:
+        # conjecture (
+        #       decision(S,V1) &
+        #       decision(S,V2)
+        # ) -> V1 = V2
+ 
+        conjecture one_b(A,B2) & B1 < B2 -> left_ballot(A,B1)
 
-    private {
         # proposals are unique per slot and ballot
         conjecture proposal(S,B,V1) & proposal(S,B,V2) -> V1 = V2
 
         # only vote for proposed values
         conjecture vote(A,S,B,V) -> proposal(S,B,V)
 
+    }
+
+    private {
         # Properties of choosable and proposal
         conjecture B1 < B2 & proposal(S,B2,V2) & V1 ~= V2 ->
             exists A . member(A,Q) & left_ballot(A,B1) & ~vote(A,S,B1,V1)
+
+        # decisions come from quorums of vote
+        conjecture decision(S,V) -> exists Q,B . forall A . member(A,Q) -> vote(A,S,B,V)
+
     }
 
-    export join_ballot
-    export propose
-    export cast_vote
-    export send_1a
+    export decide
 
 } with ballot, slot, quorum_intersection
 
@@ -132,68 +145,82 @@ isolate protocol = {
     action phase_1b(a:acceptor, b:ballot) = {
         require b > a_bal(a) & exists P . 1a_msg(P, b);
         local vs:votes { # create a map containing the votes of the acceptor:
-            require a_voted(a, B, S, V) -> vote_value(vs,S) = V & vote_ballot(vs, S) = B & vote_present(vs, S);
-            require (forall B, V . ~a_voted(a, B, S, V)) -> ~vote_present(vs, S);
+            assume a_voted(a, B, S, V) -> (vote_value(vs,S) = V & vote_ballot(vs, S) = B & vote_present(vs, S));
+            assume vote_present(vs, S) -> a_voted(a, vote_ballot(vs,S), S, vote_value(vs,S));
             1b_msg(a, b, vs) := true; # send 1b message
-            a_bal(a) := b; # update the acceptor's ballot
-        }
+        };
+        a_bal(a) := b; # update the acceptor's ballot
+        call abstract_protocol.join_ballot(a, b);
     }
 
-    action phase_2a(p:proposer, b:ballot) = {
+    action phase_2a(p:proposer, b:ballot, q:quorum, ds : decrees ) = {
         require ~(2a_msg(P, b, DS)); # nobody ever sent a 2a message for this ballot
-        local q:quorum { 
-            require member(A,q) -> exists VS . 1b_msg(A, b, VS); # quorum q responded with 1b messages
-            local vs : votes, ds : decrees {
-                require # vs contains the max votes among q for each slot
-                    ((exists A,S,VS . member(A,q) & 1b_msg(A,b,VS) & vote_present(VS,S)) -> (exists A,S,VS . member(A,q) & 1b_msg(A,b,VS) & vote_present(VS,S) & vote_ballot(VS,S) = vote_ballot(vs,S) & vote_value(VS,S) = vote_value(vs,S)))
-                    & forall A,S,VS . member(A,q) & 1b_msg(A,b,VS) & vote_present(VS,S) -> vote_present(vs,S) & vote_ballot(VS,S) <= vote_ballot(vs,S);
-                require # if a slot has a max vote that is not 0, then the decree must be equal to the corresponding value
-                    vote_present(vs,S) -> decree_present(ds,S) & decree_value(ds,S) = vote_value(vs,S);
-                2a_msg(p, b, ds) := true # send the 2a message
-                # note that the slots that had no votes can have a proposal or not, depending on whether decree_present is true or false.
-            }
-        }
+        require member(A,q) -> exists VS . 1b_msg(A, b, VS); # quorum q responded with 1b messages
+        local vs : votes {
+            assume # vs contains the max votes among q for each slot
+                member(A,q) & 1b_msg(A,b,VS) & vote_present(VS,S) -> (
+                    vote_present(vs,S) &
+                    vote_ballot(VS,S) <= vote_ballot(vs,S) &
+                    (exists A,VS . member(A,q) & 1b_msg(A,b,VS) & vote_present(VS,S) & vote_ballot(VS,S) = vote_ballot(vs,S) & vote_value(VS,S) = vote_value(vs,S)) );
+            require # if a slot has a max vote, then the decree must be equal to the corresponding value
+                vote_present(vs,S) -> decree_present(ds,S) & decree_value(ds,S) = vote_value(vs,S);
+        };
+        2a_msg(p, b, ds) := true; # send the 2a message
+        # note that the slots that had no votes can have a proposal or not, depending on whether decree_present is true or false.
+        call abstract_protocol.propose(b, q, ds);
     }
 
-    action phase_2b(a:acceptor, b:ballot) = {
+    action phase_2b(a:acceptor, b:ballot, ds:decrees) = {
         require b >= a_bal(a);
-        local ds:decrees {
-            require exists P . 2a_msg(P, b, ds);
-            a_bal(a) := b;
-            a_voted(a, B, S, V) := (decree_present(ds,S) & V = decree_value(ds,S) & B = b) | (~decree_present(ds,S) & a_voted(a,B,S,V));
-            2b_msg(a, b, ds) := true;
-        }
+        require exists P . 2a_msg(P, b, ds);
+        a_bal(a) := b;
+        a_voted(a, B, S, V) := (decree_present(ds,S) & V = decree_value(ds,S) & B = b) | (~decree_present(ds,S) & a_voted(a,B,S,V));
+        2b_msg(a, b, ds) := true;
+        call abstract_protocol.cast_vote(a, b, ds);
     }
 
-    # export phase_1a
-    # export phase_1b
+    export phase_1a
+    export phase_1b
     export phase_2a
-    #export phase_2b
+    export phase_2b
 
+    # the agreement property:
+    # conjecture (
+    #     (forall A. member(A,Q1) -> exists DS . 2b_msg(A,B1,DS) & decree_value(DS,S) = V1) &
+    #     (forall A. member(A,Q2) -> exists DS . 2b_msg(A,B2,DS) & decree_value(DS,S) = V2)
+    # ) -> V1 = V2
+
+    # a_bal, left_ballot, and one_b:
+    invariant a_bal(A) <= R -> ~abstract_protocol.left_ballot(A,R)
+    invariant a_bal(A) ~= 0 -> abstract_protocol.one_b(A,a_bal(A))
+
+    # 1b messages and one_b:
+    invariant 1b_msg(A,B,VS) -> abstract_protocol.one_b(A,B)
+
+    # 2a messages and proposals:
+    invariant 2a_msg(P,B,DS) & decree_present(DS,S) -> abstract_protocol.proposal(S,B,decree_value(DS,S))
+    invariant (exists S,V . abstract_protocol.proposal(S,B,V)) -> exists P,DS. 2a_msg(P,B,DS)
+
+    # 2b messages and votes:
+    invariant (2b_msg(A,B,DS) & decree_present(DS,S)) -> abstract_protocol.vote(A,S,B,decree_value(DS,S))
+    invariant abstract_protocol.vote(A,S,B,V) -> exists DS . 2b_msg(A,B,DS) & decree_present(DS,S) & decree_value(DS,S) = V
+    
+    # supporting invariants:
     invariant 2a_msg(P1, B, DS1) & 2a_msg(P2, B, DS2) -> DS1 = DS2
-    invariant 2b_msg(A, B, DS) -> exists DS, P . 2a_msg(P, B, DS)
-    invariant 2b_msg(A1, B, DS1) & 2a_msg(A2, B, DS2) -> DS1 = DS2
-    invariant ~1b_msg(A,0,VS)
-    invariant ~2a_msg(P,0,DS)
-    invariant ~2b_msg(A,0,DS)
-    invariant a_voted(A,B1,S,V1) & a_voted(A,B2,S,V2) -> B1 = B2 & V1 = V2
-    invariant 1b_msg(A, B, VS) -> a_bal(A) >= B
-    invariant 2b_msg(A, B, DS) -> a_bal(A) >= B
+    invariant 2b_msg(A, B, DS) -> exists P . 2a_msg(P, B, DS)
+    invariant 2b_msg(A1, B, DS1) & 2b_msg(A2, B, DS2) -> DS1 = DS2
 
     # a_voted tracks the max vote per slot:
     invariant a_voted(A, B2, S, V) & 2b_msg(A, B1, DS) & decree_present(DS,S) -> B1 <= B2
     invariant a_voted(A, B, S, V) -> exists DS. 2b_msg(A, B, DS) & decree_present(DS,S) & decree_value(DS,S) = V
-    invariant 2b_msg(A, B1, DS) & decree_present(DS,S) -> exists B2,V . B1 <= B2 & a_voted(A, B2, S, V)
+    invariant (exists B1 . 2b_msg(A, B1, DS) & decree_present(DS,S)) -> exists B2,V . a_voted(A, B2, S, V)
 
-    # 1b messages contain max votes:
+    invariant a_voted(A,B,S,V) -> B <= a_bal(A)
+
+    # 1b messages contain max votes before their ballot:
     invariant 1b_msg(A, B2, VS) & vote_present(VS,S) & 2b_msg(A, B1, DS) & decree_present(DS,S) & B1 < B2 -> B1 <= vote_ballot(VS, S) 
     invariant 1b_msg(A, B, VS) & vote_present(VS,S) -> vote_ballot(VS,S) < B
     invariant 1b_msg(A, B2, VS) & vote_present(VS,S) -> exists DS . 2b_msg(A, vote_ballot(VS,S), DS) & decree_present(DS,S) & decree_value(DS, S) = vote_value(VS,S)
     invariant 2b_msg(A, B1, DS) & decree_present(DS,S) & 1b_msg(A, B2, VS) & B1 < B2 -> vote_present(VS,S)
 
-    # the main invariant:
-    invariant B1 < B2 & 2a_msg(P, B2, DS2) & decree_present(DS2,S) & decree_value(DS2,S) = V2 & V1 ~= V2 -> exists A . member(A,Q) & B1 < a_bal(A) & (forall DS1 . ~(2b_msg(A, B1, DS1) & decree_present(DS1,S) & decree_value(DS1,S) = V1))
-    #invariant B1 < B2 & 2a_msg(P, B2, DS2) & decree_present(DS2,S) & decree_value(DS2,S) = V2 & V1 ~= V2 -> exists A . member(A,Q) & B1 < a_bal(A)
-    
-
-} with ballot, slot, quorum_intersection
+} with ballot, slot, quorum_intersection, abstract_protocol
