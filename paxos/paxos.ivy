@@ -16,27 +16,19 @@ trusted isolate quorum_intersection = {
 
 # first, the absract protocol:
 isolate abs = {
-    relation one_a(R:round)
     relation left_rnd(N:node, R:round) 
     relation proposal(R:round, V:value) 
     relation vote(N:node, R:round, V:value) 
     relation decision(N:node, R:round, V:value)
-
-    after init {    
-        one_a(R) := false;
+    
+    after init {
         left_rnd(N,R) := false;
         proposal(R,V) := false;
         vote(N,R,V) := false;
         decision(N,R,V) := false;
     }
 
-    action send_1a(r:round) = {
-        # the proposer for round r sends a message asking nodes to join the round
-        one_a(r) := true
-    }
-
     action join_round(n:node, r:round) = {
-        require one_a(r);
         require ~left_rnd(n,r);
         left_rnd(n,R) := left_rnd(n,R) | R < r
     }
@@ -176,7 +168,6 @@ isolate protocol = {
     private {
         conjecture current_round(N) = R & R <= R2 -> ~abs.left_rnd(N,R2)
         conjecture current_round(N) = R & R2 < R -> abs.left_rnd(N,R2)
-        conjecture one_a(R) <-> abs.one_a(R)
         conjecture vote(N,R,V) <-> abs.vote(N,R,V)
         conjecture decision(N,R,V) <-> abs.decision(N,R,V)
         conjecture proposal(R,V) <-> abs.proposal(R,V)
