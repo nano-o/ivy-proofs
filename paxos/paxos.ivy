@@ -108,7 +108,6 @@ isolate protocol = {
 
     action send_1a(r:round) = {
         one_a(r) := true;
-        call abs.send_1a(r)
     }
 
     action send_1b(n:node, r:round, maxr:round, maxv:value) = {
