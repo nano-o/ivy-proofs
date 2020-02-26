@@ -1,0 +1,96 @@
+#lang ivy1.7
+
+#
+# Shift relation
+# --------------
+#
+# In order to "slide" the window, we need a relation that describes a
+# "shift" in the sequence. The module `shift_theory` below provides a
+# relation `r(T,X,Y)` that holds when X = Y + T. The idea is that `T`
+# is the amount of left-shift, `X` is an element of the original
+# sequence, and `Y` is the corresponding element of the shifted
+# sequence.
+#
+# The module provides an action `f` that, given `T,X`, returns Y. This
+# action can be used to find an element in the shifted sequence. By hiding
+# the arithmetic in this action, we can avoid using arithmetic in the
+# sliding window implementation.
+#
+# The module takes a parameter `idx` which must be is an ordered
+# sequence type.
+
+module shift_theory(idx) = {
+
+    # The interface provides the shift relation `r` an an action `f`
+    # that computes the shift (that is, subtracts t from x, to get the
+    # position of `x` relative to offset `t`).
+
+    relation r(T : idx, X : idx, Y : idx)
+    action f(t:idx,x:idx) returns (y:idx)
+    
+    specification {
+
+        # We need the following properties of the `r` relation:
+        #
+        # 1. It is a partial function from `X` to `Y`
+        # 2. It is a partial function from `Y` to `X`
+        # 3. It is increasing in `X`
+        # 4. It is decreasing in `T`
+        # 5. It is preserved by successor
+        # 6. For `T = 0`, it is the identity relation
+        # 7. Indices are non-negative, so `Y <= X` and `T <= X`.
+        #
+        # Property 2 isn't actually needed, but it might be helpful in
+        # other uses of this module. Several of these properties were
+        # added in response to counterexamples in verifying the
+        # sliding window implementation below.
+
+	      property r(T,X,Y) & r(T,X,Y1) -> Y = Y1
+	      property r(T,X,Y) & r(T,X1,Y) -> X = X1
+	      property r(T,X1,Y1) & r(T,X2,Y2) & X1 < X2 -> Y1 < Y2
+	      property r(T1,X,Y1) & r(T2,X,Y2) & T1 < T2 -> Y2 < Y1
+        property r(T,X1,Y1) & idx.succ(X1,X2) & idx.succ(Y1,Y2) -> r(T,X2,Y2)
+        property r(0,X,X)
+        property r(T,X,Y) -> Y <= X & T <= X
+
+        # The action `f` returns a `y` such that `r(t,x,y)`, assuming
+        # `t <= x`.  Note that for positions less than the offset,
+        # there is no index in the shifted sequence (that is, positions
+        # less than the offset are not in the window)
+
+	      around f {
+            require t <= x;
+            ...
+	          ensure r(t,x,y)
+	      }
+        
+    } # end specification section
+
+    # In the implementation section, we give the definition of `r`
+    # (which is needed to prove the properties above) and give the
+    # implementation of `f`.
+
+    implementation {
+        definition r(T,X,Y) = (X = Y + T)
+        implement f {
+            y := x - t
+        }
+    }
+
+    # We make this module an isolate, and say `with idx.impl` to use
+    # the implementation of `idx`. This gives us the natural number
+    # theory, which is needed to prove the above properties. Note it's
+    # very important *not* to say `with idx` here, since the
+    # specification of `ordered_sequence` (see order.ivy) contains
+    # various universally quantified properties that, when mixed with
+    # arithmetic, would put us outside the decidable fragment.
+
+    isolate iso = this with idx.impl
+}
+
+# test instantiation:
+
+# include order
+# instance idx : unbounded_sequence
+# instance thy : shift_theory(idx)
+# export thy.f
