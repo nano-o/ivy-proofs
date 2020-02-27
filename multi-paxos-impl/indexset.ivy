@@ -247,42 +247,13 @@ module indexset(basis) = {
     attribute test = impl
 }
 
-# 
-# The following is a test instantiation of `indexset`.
-#
-
-# instance basis : unbounded_sequence
-# object basis = { ...
-#     var max : basis
-# }
+# test
 
 instance basis : iterable
-
 instance nset : indexset(basis)
-
-# object test = {
-#     action myaction returns(r:bool)
-
-#     var myset: nset.set
-
-#     implementation {
-#         after init {
-#             basis.max := 2;
-#             myset := nset.empty();
-#             myset := nset.add(myset,3);
-#             myset := nset.add(myset,1);
-#         }
-        
-#         implement myaction {
-#             r := nset.majority(myset)
-#         }
-#     }
-    
-# }
 
 export nset.empty
 export nset.add
 export nset.is_empty
-#export test.myaction
 
-extract iso_impl = test.impl, nset.api, basis.impl, nset.index.impl, nset.disjointness.impl
+extract iso_impl = basis, nset.api, nset.index, nset.disjointness
