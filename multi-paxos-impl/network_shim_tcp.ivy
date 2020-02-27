@@ -126,3 +126,9 @@ import shim.debug_receiving
 export net.recv
 export shim.bcast
 export shim.unicast
+
+object impl_defs = {
+    interpret value -> strlit
+}
+
+extract iso_impl(self:node) = node, shim(self), net(self), round, inst, impl_defs
