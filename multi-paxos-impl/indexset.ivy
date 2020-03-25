@@ -249,11 +249,11 @@ module indexset(basis) = {
 
 # test
 
-instance basis : iterable
-instance nset : indexset(basis)
+# instance basis : iterable
+# instance nset : indexset(basis)
 
-export nset.empty
-export nset.add
-export nset.is_empty
+# export nset.empty
+# export nset.add
+# export nset.is_empty
 
-extract iso_impl = basis, nset.api, nset.index, nset.disjointness
+# extract iso_impl = basis, nset.api, nset.index, nset.disjointness
