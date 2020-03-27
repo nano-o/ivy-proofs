@@ -38,8 +38,7 @@ isolate abs = {
         require forall N, R . member(N, q) & R < r -> left_rnd(N,R);
 
         # find the maximal max_vote in the quorum
-        require ((maxr = 0 & forall N,R,V. ~(member(N, q) & R < r & vote(N,R,V))) |
-           (maxr ~= 0 &
+        require ((forall N,R,V. ~(member(N, q) & R < r & vote(N,R,V))) | (
            (exists N. member(N, q) & maxr < r & vote(N,maxr,v)) &
            (forall N,R,V. (member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr))
         );
@@ -128,8 +127,7 @@ isolate protocol = {
 
         # find the maximal vote in the quorum
         # here, compared to the protocol isolate, the leader uses the contents of the one_b messages instead of the vote relation
-        assume ((maxr = 0 & forall N. member(N, q) -> exists V . one_b(N,r,0,V)) |
-           (maxr ~= 0 &
+        assume ((forall N. member(N, q) -> exists V . one_b(N,r,0,V)) | (
            (exists N. member(N, q) & maxr < r & one_b(N,r,maxr,v)) &
            (forall N,R,V. (member(N, q) & R  < r & one_b(N,r,R,V)) -> R <= maxr))
         );
