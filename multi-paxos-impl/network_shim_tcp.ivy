@@ -4,14 +4,7 @@
 # The network shim just routes the different packet types to their designated handler.
 
 include tcp
-include order
-include collections
-
-instance node : iterable
-
-instance round : unbounded_sequence
-instance inst : unbounded_sequence # instances, i.e. positions in the log
-type value
+include multi_paxos_protocol
 
 object msg_kind = {
     type this = {one_a, one_b, two_a, two_b, keep_alive, decide}
@@ -123,12 +116,13 @@ import shim.debug_sending
 import shim.debug_receiving
 
 # test
-export net.recv
-export shim.bcast
-export shim.unicast
 
-object impl_defs = {
-    interpret value -> strlit
-}
+# export net.recv
+# export shim.bcast
+# export shim.unicast
 
-extract iso_impl(self:node) = node, shim(self), net(self), round, inst, impl_defs
+# object impl_defs = {
+#     interpret value -> strlit
+# }
+
+# extract code(self:node) = node, shim(self), net(self), round, inst, impl_defs
