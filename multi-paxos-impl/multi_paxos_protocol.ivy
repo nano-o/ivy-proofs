@@ -5,37 +5,37 @@
 include order
 include nodes
 
-instance round : unbounded_sequence
-instance inst : unbounded_sequence # instances, i.e. positions in the log
-type val
+instance round_t : unbounded_sequence
+instance inst_t : unbounded_sequence # instances, i.e. positions in the log
+type value_t
 
 type vote_struct = struct {
-   the_round : round,
-   the_value : val,
+   rnd : round_t,
+   val: value_t,
    present : bool 
 }
 
 object votemap = {
-    instantiate array(inst, vote_struct)
+    instantiate array(inst_t, vote_struct)
 
-    function the_value(M:t,I:inst):val
-    definition the_value(M,I) = value(M,I).the_value
+    function val(M:t,I:inst_t):value_t
+    definition val(M,I) = value(M,I).val
 
-    function the_round(M:t,I:inst):round
-    definition the_round(M,I) = value(M,I).the_round
+    function rnd(M:t,I:inst_t):round_t
+    definition rnd(M,I) = value(M,I).rnd
 
-    function present(M:t,I:inst):bool
+    function present(M:t,I:inst_t):bool
     definition present(M,I) = value(M,I).present
 }
 
 isolate abs_paxos = {
 
-    relation left_round(N:node, R:round)
-    relation proposal(I:inst, R:round, V:val)
-    relation vote(N:node, I:inst, R:round, V:val)
-    relation decision(I:inst, V:val)
-    relation active(R:round)  # the leader of round R has received a quorum of 1b and can now propose new values
-    function min_inst(R:round):inst
+    relation left_round(N:node, R:round_t)
+    relation proposal(I:inst_t, R:round_t, V:value_t)
+    relation vote(N:node, I:inst_t, R:round_t, V:value_t)
+    relation decision(I:inst_t, V:value_t)
+    relation active(R:round_t)  # the leader of round R has received a quorum of 1b and can now propose new values
+    function min_inst(R:round_t):inst_t
 
     specification {
 
@@ -66,12 +66,12 @@ isolate abs_paxos = {
             )
         }
         
-        action join_round(n:node, r:round) = {
+        action join_round(n:node, r:round_t) = {
             require ~left_round(n,r);
             left_round(n,R) := left_round(n,R) | R < r;
         }
         
-        action activate_round(r:round, q:nset, min_i:inst) = {
+        action activate_round(r:round_t, q:nset, min_i:inst_t) = {
             require ~active(r);
             require nset.majority(q);
             require nset.member(N, q) & R < r -> left_round(N,R);
@@ -79,36 +79,36 @@ isolate abs_paxos = {
                 require m.end <= I & nset.member(N,q) & R < r -> ~vote(N,I,R,V);
                 require min_i <= I & I < m.end -> (
                     (~m.present(I) & forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,I,R,V))) |
-                    (m.present(I) & m.the_round(I) < r & (exists N . nset.member(N,q) & vote(N,I,m.the_round(I),m.the_value(I))) & (forall N,R,V.  ~(nset.member(N, q) & m.the_round(I) < R & R < r & vote(N,I,R,V)))) );
+                    (m.present(I) & m.rnd(I) < r & (exists N . nset.member(N,q) & vote(N,I,m.rnd(I),m.val(I))) & (forall N,R,V.  ~(nset.member(N, q) & m.rnd(I) < R & R < r & vote(N,I,R,V)))) );
                 # send the proposals
-                proposal(I, r, V) := proposal(I, r, V) | (min_i <= I & I < m.end & m.present(I) & V = m.the_value(I))
+                proposal(I, r, V) := proposal(I, r, V) | (min_i <= I & I < m.end & m.present(I) & V = m.val(I))
             };
             # activate the round
             active(r) := true;
             min_inst(r) := min_i;
         }
 
-        action propose(r:round, i:inst, v:val) = {
+        action propose(r:round_t, i:inst_t, v:value_t) = {
             # propose a new arbitrary value an available instance in an active round
             assume active(r) & min_inst(r) <= I;
             assume ~proposal(i, r, V);
             proposal(i, r, v) := true
         }
 
-        action cast_vote(n:node, i:inst, r:round, v:val) = {
+        action cast_vote(n:node, i:inst_t, r:round_t, v:value_t) = {
             require ~left_round(n,r);
             require proposal(i, r, v);
             vote(n, i, r, v) := true
         }
 
-        action decide(i:inst, r:round, v:val, q:nset) = {
+        action decide(i:inst_t, r:round_t, v:value_t, q:nset) = {
             require nset.majority(q);
             require nset.member(N, q) -> vote(N, i, r, v);
             decision(i, v) := true
         }
     }
 }
-with nset, nset.majorities_intersect, round, inst, votemap
+with nset, nset.majorities_intersect, round_t, inst_t, votemap
 
 # test
 
