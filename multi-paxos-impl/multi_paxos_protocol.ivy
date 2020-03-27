@@ -1,0 +1,119 @@
+#lang ivy1.7
+
+# This file contains the specification and proof of a high-level, abstract version of the Multi-Paxos protocol.
+
+include order
+include nodes
+
+instance round : unbounded_sequence
+instance inst : unbounded_sequence # instances, i.e. positions in the log
+type val
+
+type vote_struct = struct {
+   the_round : round,
+   the_value : val,
+   present : bool 
+}
+
+object votemap = {
+    instantiate array(inst, vote_struct)
+
+    function the_value(M:t,I:inst):val
+    definition the_value(M,I) = value(M,I).the_value
+
+    function the_round(M:t,I:inst):round
+    definition the_round(M,I) = value(M,I).the_round
+
+    function present(M:t,I:inst):bool
+    definition present(M,I) = value(M,I).present
+}
+
+isolate abs_paxos = {
+
+    relation left_round(N:node, R:round)
+    relation proposal(I:inst, R:round, V:val)
+    relation vote(N:node, I:inst, R:round, V:val)
+    relation decision(I:inst, V:val)
+    relation active(R:round)  # the leader of round R has received a quorum of 1b and can now propose new values
+    function min_inst(R:round):inst
+
+    specification {
+
+        after init {
+            left_round(N,R) := false;
+            proposal(I,R,V) := false;
+            vote(N,I,R,V) := false;
+            decision(I,V) := false;
+            active(R) := R = 0;
+        }
+        
+        invariant [agreement] decision(I,V1) & decision(I,V2) -> V1 = V2
+        
+        # proposals are unique per round
+        invariant proposal(I,R,V) -> active(R) & min_inst(R) <= I
+        invariant proposal(I,R,V1) & proposal(I,R,V2) -> V1 = V2
+
+        # only vote for proposed values
+        invariant vote(N,I,R,V) -> proposal(I,R,V)
+
+        # we make the following invariants private because they have quantifier alternation which we do not want to expose outside this isolate
+        private {
+            # decisions come from quorums of votes:
+            invariant decision(I,V) -> exists Q, R . nset.majority(Q) & forall N. nset.member(N, Q) -> vote(N,I,R,V)
+            # if R2>R1 is active, I is greater than R2's min instance, and V is not proposed at I, then V is not choosable at R1
+            invariant nset.majority(Q) & R1 < R2 & active(R2) & min_inst(R2) <= I & ~proposal(I,R2,V) -> (
+                exists N. nset.member(N,Q) & left_round(N,R1) & ~vote(N,I,R1,V)
+            )
+        }
+        
+        action join_round(n:node, r:round) = {
+            require ~left_round(n,r);
+            left_round(n,R) := left_round(n,R) | R < r;
+        }
+        
+        action activate_round(r:round, q:nset, min_i:inst) = {
+            require ~active(r);
+            require nset.majority(q);
+            require nset.member(N, q) & R < r -> left_round(N,R);
+            local m:votemap {
+                require m.end <= I & nset.member(N,q) & R < r -> ~vote(N,I,R,V);
+                require min_i <= I & I < m.end -> (
+                    (~m.present(I) & forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,I,R,V))) |
+                    (m.present(I) & m.the_round(I) < r & (exists N . nset.member(N,q) & vote(N,I,m.the_round(I),m.the_value(I))) & (forall N,R,V.  ~(nset.member(N, q) & m.the_round(I) < R & R < r & vote(N,I,R,V)))) );
+                # send the proposals
+                proposal(I, r, V) := proposal(I, r, V) | (min_i <= I & I < m.end & m.present(I) & V = m.the_value(I))
+            };
+            # activate the round
+            active(r) := true;
+            min_inst(r) := min_i;
+        }
+
+        action propose(r:round, i:inst, v:val) = {
+            # propose a new arbitrary value an available instance in an active round
+            assume active(r) & min_inst(r) <= I;
+            assume ~proposal(i, r, V);
+            proposal(i, r, v) := true
+        }
+
+        action cast_vote(n:node, i:inst, r:round, v:val) = {
+            require ~left_round(n,r);
+            require proposal(i, r, v);
+            vote(n, i, r, v) := true
+        }
+
+        action decide(i:inst, r:round, v:val, q:nset) = {
+            require nset.majority(q);
+            require nset.member(N, q) -> vote(N, i, r, v);
+            decision(i, v) := true
+        }
+    }
+}
+with nset, nset.majorities_intersect, round, inst, votemap
+
+# test
+
+export abs_paxos.decide
+export abs_paxos.cast_vote
+export abs_paxos.propose
+export abs_paxos.join_round
+export abs_paxos.activate_round
