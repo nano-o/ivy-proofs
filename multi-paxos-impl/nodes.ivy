@@ -10,7 +10,7 @@ instance node : iterable
 
 # node sets
 
-isolate nset = {
+trusted isolate nset = {
 
     type this
     alias t = this
@@ -30,9 +30,12 @@ isolate nset = {
         after add {
             ensure member(N,s) <-> (member(N , old s) | N = n)
         }
-        
+    }
+
+    # This invariant has quantifier alternation, thus we make it private. It can always be used explitely in a with clause
+    private {   
         invariant [majorities_intersect]
-            (majority(S) & majority(T)) -> exists N. member(N,S) & member(N,T)
+        (majority(S) & majority(T)) -> exists N. member(N,S) & member(N,T)
     }
 
     implementation {
@@ -71,6 +74,7 @@ isolate nset = {
             }
         }
     }
+    
 } with node
 
 # export nset.emptyset
