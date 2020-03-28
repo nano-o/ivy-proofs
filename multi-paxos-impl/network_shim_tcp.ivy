@@ -75,12 +75,12 @@ isolate shim = {
                 call one_b_handler.handle(dst,m)
             }
             else if m.m_kind = msg_kind.two_a {
-                call two_a_handler.handle(dst,m);
                 call debug_receiving(dst,m);
+                call two_a_handler.handle(dst,m);
             }
             else if m.m_kind = msg_kind.two_b {
-                call two_b_handler.handle(dst,m);
                 call debug_receiving(dst,m);
+                call two_b_handler.handle(dst,m);
             }
             else if m.m_kind = msg_kind.keep_alive {
                 call keep_alive_handler.handle(dst,m)
@@ -89,6 +89,13 @@ isolate shim = {
                 call decide_handler.handle(dst,m)
             }
         }
+
+        action debug_sending_(src:node, dst:node, m:msg)
+        implement debug_sending_(src:node, dst:node, m:msg) {
+            if (m.m_kind ~= msg_kind.keep_alive) {
+                call debug_sending(src,dst,m);
+            };
+        }
         
         implement bcast { # broadcast sends to all nodes, including the sender.
             var iter := node.iter.create(0);
@@ -96,15 +103,13 @@ isolate shim = {
             invariant net.sent(M,D) -> sent(M,D)
             {
                 var n := iter.val;
-                if (m.m_kind ~= msg_kind.keep_alive) {
-                    call debug_sending(src,n,m);
-                };
+                call debug_sending_(src,n,m);
                 call net.send(src,n,m);
                 iter := iter.next;
             }
         }
         implement unicast {
-            #call debug_sending(src,dst,m);
+            call debug_sending_(src,dst,m);
             call net.send(src,dst,m);
         }
 
