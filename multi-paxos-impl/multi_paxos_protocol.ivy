@@ -60,6 +60,7 @@ isolate abs_paxos = {
         private {
             # decisions come from quorums of votes:
             invariant decision(I,V) -> exists Q, R . nset.majority(Q) & forall N. nset.member(N, Q) -> vote(N,I,R,V)
+
             # if R2>R1 is active, I is greater than R2's min instance, and V is not proposed at I, then V is not choosable at R1
             invariant nset.majority(Q) & R1 < R2 & active(R2) & min_inst(R2) <= I & ~proposal(I,R2,V) -> (
                 exists N. nset.member(N,Q) & left_round(N,R1) & ~vote(N,I,R1,V)
@@ -79,7 +80,7 @@ isolate abs_paxos = {
                 require m.end <= I & nset.member(N,q) & R < r -> ~vote(N,I,R,V);
                 require min_i <= I & I < m.end -> (
                     (~m.present(I) & forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,I,R,V))) |
-                    (m.present(I) & m.rnd(I) < r & (exists N . nset.member(N,q) & vote(N,I,m.rnd(I),m.val(I))) & (forall N,R,V.  ~(nset.member(N, q) & m.rnd(I) < R & R < r & vote(N,I,R,V)))) );
+                    (m.present(I) & m.rnd(I) < r & proposal(I,m.rnd(I),m.val(I)) & (forall N,R,V.  ~(nset.member(N, q) & m.rnd(I) < R & R < r & vote(N,I,R,V)))) );
                 # send the proposals
                 proposal(I, r, V) := proposal(I, r, V) | (min_i <= I & I < m.end & m.present(I) & V = m.val(I))
             };
@@ -88,7 +89,7 @@ isolate abs_paxos = {
             min_inst(r) := min_i;
         }
 
-        action propose(r:round_t, i:inst_t, v:value_t) = {
+        action propose(i:inst_t, r:round_t, v:value_t) = {
             # propose a new arbitrary value an available instance in an active round
             assume active(r) & min_inst(r) <= I;
             assume ~proposal(i, r, V);
@@ -112,8 +113,8 @@ with nset, nset.majorities_intersect, round_t, inst_t, votemap
 
 # test
 
-export abs_paxos.decide
-export abs_paxos.cast_vote
-export abs_paxos.propose
-export abs_paxos.join_round
-export abs_paxos.activate_round
+# export abs_paxos.decide
+# export abs_paxos.cast_vote
+# export abs_paxos.propose
+# export abs_paxos.join_round
+# export abs_paxos.activate_round
