@@ -149,11 +149,20 @@ isolate system = {
             else d.present := false;
         }
 
+        action build_proposal(j:inst_t, v:value_t) returns (m:msg) = {
+            m.m_kind := msg_kind.two_a;
+            m.m_round := current_round;
+            m.m_node := self;
+            m.m_inst := j;
+            m.m_value := v;
+        }
+
         implement propose(v:value_t) returns (ret:bool) {
             if leader_of(self, current_round) & round_active & current_round = 0 { # TODO
                 call abs_paxos.propose(next_inst, current_round, v);
                 var m:msg := build_proposal(next_inst,v);
                 call shim.bcast(self,m);
+                call two_a_retransmitter.notify_two_a(next_inst);
                 
                 call vote(self, next_inst, v);
 
@@ -317,14 +326,6 @@ isolate system = {
             call shim.bcast(self,m);
         }
         
-        action build_proposal(j:inst_t, v:value_t) returns (m:msg) = {
-            m.m_kind := msg_kind.two_a;
-            m.m_round := current_round;
-            m.m_node := self;
-            m.m_inst := j;
-            m.m_value := v;
-        }
-
         action debug_vote(m:msg)
         import debug_vote
         action vote(leader:node, i:inst_t, v:value_t) = {
@@ -394,6 +395,7 @@ isolate system = {
             instance sec : timeout_sec
             implement sec.timeout { # every second
                 call leader_election.tick;
+                call two_a_retransmitter.tick;
             }
         }
 
@@ -483,6 +485,8 @@ isolate system = {
                 two_a_times := two_a_times.set(i,current_time)
             }
             
+            action debug_retransmitter(i:inst_t, b:bool, t:time, t2:time)
+            import debug_retransmitter
             action tick = {
                 if (leader_of(self, current_round) & round_active) {
                     var m2:msg;
@@ -496,6 +500,7 @@ isolate system = {
                         invariant m2.m_kind = msg_kind.two_a & m2.m_node = self & m2.m_round = current_round
                         invariant ~(shim.sent(M,D) ~= old shim.sent(M,D) & ~(msg.m_kind(M) = msg_kind.two_a & msg.m_round(M) = current_round & msg.m_value(M) = inst_status.value(msg.m_inst(M)).proposal & msg.m_inst(M) < inst_status.end & inst_status.value(msg.m_inst(M)).active & msg.m_node(M) = self))
                         {
+                            call debug_retransmitter(i, ~is_decided(i) & i < inst_status.end & inst_status.value(i).active & i < two_a_times.end, current_time, two_a_times.value(i));
                             if (~is_decided(i) & i < inst_status.end & inst_status.value(i).active & i < two_a_times.end & two_a_times.value(i) < current_time) {
                                 m2.m_inst := i;
                                 m2.m_value := inst_status.value(i).proposal;
