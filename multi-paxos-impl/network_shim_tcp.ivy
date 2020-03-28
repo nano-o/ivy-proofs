@@ -67,8 +67,6 @@ isolate shim = {
         action debug_receiving(dst:node,m:msg)
 
         implement net.recv(dst:node,m:msg) {
-
-            call debug_receiving(dst,m);
             
             if m.m_kind = msg_kind.one_a {
                 call one_a_handler.handle(dst,m)
@@ -77,10 +75,12 @@ isolate shim = {
                 call one_b_handler.handle(dst,m)
             }
             else if m.m_kind = msg_kind.two_a {
-                call two_a_handler.handle(dst,m)
+                call two_a_handler.handle(dst,m);
+                call debug_receiving(dst,m);
             }
             else if m.m_kind = msg_kind.two_b {
-                call two_b_handler.handle(dst,m)
+                call two_b_handler.handle(dst,m);
+                call debug_receiving(dst,m);
             }
             else if m.m_kind = msg_kind.keep_alive {
                 call keep_alive_handler.handle(dst,m)
@@ -96,13 +96,15 @@ isolate shim = {
             invariant net.sent(M,D) -> sent(M,D)
             {
                 var n := iter.val;
-                call debug_sending(src,n,m);
+                if (m.m_kind ~= msg_kind.keep_alive) {
+                    call debug_sending(src,n,m);
+                };
                 call net.send(src,n,m);
                 iter := iter.next;
             }
         }
         implement unicast {
-            call debug_sending(src,dst,m);
+            #call debug_sending(src,dst,m);
             call net.send(src,dst,m);
         }
 
@@ -113,7 +115,6 @@ isolate shim = {
 
 } with net, node
 
-# Do not change, key-value store links to those:
 import shim.debug_sending
 import shim.debug_receiving
 

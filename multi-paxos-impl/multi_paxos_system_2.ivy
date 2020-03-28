@@ -203,7 +203,7 @@ isolate system = {
                     call current_leader.set(m.m_node);
                 };
 
-                if (~is_decided(m.m_inst)) { # Note here the leader may be receiving its own proposal. It must vote for liveness of recovery.
+                if (~is_decided(m.m_inst) & ~is_leader(self, current_round)) { # Note here the leader may be receiving its own proposal, but it already voted
                     call vote(m.m_node, m.m_inst, m.m_value);
                 }
                 else if (m.m_node ~= self) {
@@ -241,6 +241,8 @@ isolate system = {
             }
         }
         
+        action debug_two_b_handler(a:bool)
+        import debug_two_b_handler
         # receiving a vote:
         implement shim.two_b_handler.handle(m:msg) {
             # first make sure that inst_status is big enough.
@@ -251,9 +253,8 @@ isolate system = {
             var status := inst_status.get(m.m_inst);
             if status.active & ~status.decided & m.m_round = current_round {
                 status.voters := status.voters.add(m.m_node);
-                status.active := true;
-                status.proposal := m.m_value;
                 if status.voters.majority {
+                    call debug_two_b_handler(status.active);
                     status.decided := true;
                     
                     # update local log:
@@ -323,6 +324,8 @@ isolate system = {
             m.m_value := v;
         }
 
+        action debug_vote(m:msg)
+        import debug_vote
         action vote(leader:node, i:inst_t, v:value_t) = {
             # resize if needed:
             if my_votes.end <= i {
@@ -349,6 +352,7 @@ isolate system = {
             # broadcast votes if broadcast_votes is true
             var m2:msg := build_vote_msg(i, v);
             call shim.unicast(self, leader, m2);
+            call debug_vote(m2)
         }
 
         action build_vote_msg(i:inst_t, v:value_t) returns (m:msg) = {
