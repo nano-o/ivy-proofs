@@ -13,10 +13,10 @@ object msg_kind = {
 object msg = {
     type this = struct {
         m_kind : msg_kind,
-        m_round : round,
-        m_inst : inst,
+        m_round : round_t,
+        m_inst : inst_t,
         m_node : node,
-        m_value : value
+        m_value : value_t
         #,m_votemap : votemap_seg
     }
 }
@@ -125,4 +125,4 @@ import shim.debug_receiving
 #     interpret value -> strlit
 # }
 
-# extract code(self:node) = node, shim(self), net(self), round, inst, impl_defs
+# extract code(self:node) = node, shim(self), net(self), round_t, inst_t, impl_defs

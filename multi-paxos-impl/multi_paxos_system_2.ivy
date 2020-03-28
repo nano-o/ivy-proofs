@@ -12,26 +12,20 @@ include network_shim_tcp
 # functional relation `leader_of`. If we use the spec of this
 # isolate, we get just the injectivity property, whereas the
 # impl also gives us totality.
-relation leader_of(N:node, E:round)
+relation leader_of(N:node, E:round_t)
 
 isolate round_leader = {
     specification {
         property [injectivity] leader_of(Y,X) & leader_of(Z,X) -> Y = Z
     }
     implementation {
-        function leader_fun(R:round) : node
+        function leader_fun(R:round_t) : node
         definition leader_of(N,R) = (R ~= 0 & N = leader_fun(R))
     }
 }
 
 # no_ops to fill holes in the log
-individual no_op : value
-
-type vote_struct = struct {
-   the_round : round,
-   the_value : value,
-   present : bool 
-}
+individual no_op : value_t
 
 individual not_a_vote : vote_struct
 isolate not_a_vote_def = {
@@ -45,18 +39,16 @@ isolate not_a_vote_def = {
     }
 }
 
-instance votemap : array(inst, vote_struct)
-
 # Multi-Paxos implementation
 isolate system = {
     
     type ballot_status = struct {
         active : bool,
         voters : nset,
-        proposal : value,
+        proposal : value_t,
         decided : bool
     }
-    instance ballot_status_array : array(inst, ballot_status)
+    instance ballot_status_array : array(inst_t, ballot_status)
     individual init_status : ballot_status
     # default status for initialization
     object status_obj = {
@@ -72,17 +64,17 @@ isolate system = {
     instance time : unbounded_sequence
 
     type decision_struct = struct {
-        decision: value,
+        decision: value_t,
         present: bool
     }
     
-    instance log : array(inst, decision_struct)
+    instance log : array(inst_t, decision_struct)
     
     object server(self:node) = {
 
         # API for client code:
         # returns false and does nothing if called on a node where leader_of(self,current_round)=false or current_round is not yet active.
-        action propose(v:value) returns (r:bool)
+        action propose(v:value_t) returns (r:bool)
         individual no_decision : decision_struct
         object no_decision_initialization = {
             after init {
@@ -91,16 +83,16 @@ isolate system = {
             invariant ~no_decision.present
         }
         # called by the client to query the log
-        action query(i:inst) returns (d:decision_struct)
+        action query(i:inst_t) returns (d:decision_struct)
 
         # called by server to report a decision
-        action decide(i:inst,v:value)
+        action decide(i:inst_t,v:value_t)
 
         # the service specification:
         # do not change; the key-value store shim depends on this interface
         specification {
             
-            relation decided(S:inst,V:value)
+            relation decided(S:inst_t,V:value_t)
 
             object spec_init = {
                 after init {
@@ -119,11 +111,11 @@ isolate system = {
             }
         }
         
-        individual current_round : round
-        individual next_inst : inst # next free consensus instance 
+        individual current_round : round_t
+        individual next_inst : inst_t # next free consensus instance 
         individual inst_status : ballot_status_array # votes received in the current round, per instance
         individual my_log : log # the decision log
-        individual first_undecided : inst # the first "hole" in the log
+        individual first_undecided : inst_t # the first "hole" in the log
 
         # data structures used upon leadership change:
         relation round_active # true when successfully acquired leadership
@@ -133,8 +125,8 @@ isolate system = {
         # for tracking the leader without creating quantifier alternation:
         instance current_leader:witness(node)
 
-        function is_decided(J:inst):bool
-        definition is_decided(J:inst) = (J < my_log.end & my_log.value(J).present)
+        function is_decided(J:inst_t):bool
+        definition is_decided(J:inst_t) = (J < my_log.end & my_log.value(J).present)
 
         after init {
             current_round := 0;
@@ -148,7 +140,7 @@ isolate system = {
             first_undecided := 0;
         }
         
-        implement query(i:inst) {
+        implement query(i:inst_t) {
             if is_decided(i) {
                 d.decision := my_log.value(i).decision;
                 d.present := true;
@@ -156,14 +148,13 @@ isolate system = {
             else d.present := false;
         }
 
-        implement propose(v:value) returns (ret:bool) {
-            if leader_of(self, current_round) & round_active & current_round = 0 {
-                var temp := nset.emptyset();
-                call abs_paxos.propose(next_inst, current_round, v, temp, 0); # TODO
+        implement propose(v:value_t) returns (ret:bool) {
+            if leader_of(self, current_round) & round_active & current_round = 0 { # TODO
+                call abs_paxos.propose(next_inst, current_round, v);
                 var m:msg := build_proposal(next_inst,v);
                 call shim.bcast(self,m);
                 
-                call vote(self, next_inst,v);
+                call vote(self, next_inst, v);
 
                 if (inst_status.end <= next_inst) {
                     inst_status := inst_status.resize(next_inst.next, init_status);
@@ -172,7 +163,7 @@ isolate system = {
                 status.active := true;
                 status.proposal := v;
                 
-                next_inst := inst.next(next_inst);
+                next_inst := inst_t.next(next_inst);
                 ret := true;
             }
             else {
@@ -271,14 +262,14 @@ isolate system = {
                     var m2:msg := build_decide_msg(m.m_inst);
                     call shim.bcast(self,m2);
 
-                    call abs_paxos.decide(self, m.m_inst, m.m_round, m.m_value, status.voters); # ghost
+                    call abs_paxos.decide(m.m_inst, m.m_round, m.m_value, status.voters); # ghost
                     call decide(m.m_inst, m.m_value);
                 };
                 inst_status := inst_status.set(m.m_inst,status)
             }
         }
         
-        action next_self_leader_round(r:round) returns (s:round) = {
+        action next_self_leader_round(r:round_t) returns (s:round_t) = {
             # find the next round in which self is leader
             var iter := current_round.next;
             while ~leader_of(self,iter)
@@ -289,7 +280,7 @@ isolate system = {
             s := iter;
         }
         
-        action change_round(r:round) = {
+        action change_round(r:round_t) = {
             current_round := r;
             call abs_paxos.join_round(self, r); # ghost
             call leader_election.notify_join_round(current_round);
@@ -316,7 +307,7 @@ isolate system = {
             call shim.bcast(self,m);
         }
         
-        action build_proposal(j:inst, v:value) returns (m:msg) = {
+        action build_proposal(j:inst_t, v:value_t) returns (m:msg) = {
             m.m_kind := msg_kind.two_a;
             m.m_round := current_round;
             m.m_node := self;
@@ -324,7 +315,7 @@ isolate system = {
             m.m_value := v;
         }
 
-        action vote(leader:node, i:inst, v:value) = {
+        action vote(leader:node, i:inst_t, v:value_t) = {
             # resize if needed:
             if my_votes.end <= i {
                 my_votes := my_votes.resize(i.next, not_a_vote)
@@ -334,8 +325,8 @@ isolate system = {
             };
             
             var new_vote:vote_struct;
-            new_vote.the_round := current_round;
-            new_vote.the_value := v;
+            new_vote.rnd := current_round;
+            new_vote.val := v;
             new_vote.present := true;
             my_votes := my_votes.set(i,new_vote);
             
@@ -352,7 +343,7 @@ isolate system = {
             call shim.unicast(self, leader, m2);
         }
 
-        action build_vote_msg(i:inst, v:value) returns (m:msg) = {
+        action build_vote_msg(i:inst_t, v:value_t) returns (m:msg) = {
             m.m_kind := msg_kind.two_b;
             m.m_round := current_round;
             m.m_node := self;
@@ -360,7 +351,7 @@ isolate system = {
             m.m_value := v;
         }
 
-        action build_decide_msg(i:inst) returns (m:msg) = {
+        action build_decide_msg(i:inst_t) returns (m:msg) = {
             m.m_kind := msg_kind.decide;
             m.m_inst := i;
             m.m_round := current_round;
@@ -369,7 +360,7 @@ isolate system = {
         }
 
         # update first_undecided to the the next hole in the log.
-        action update_first_undecided(i:inst) = {
+        action update_first_undecided(i:inst_t) = {
             if (i = first_undecided) {
                 var continue:bool := true;
                 while i <= my_log.end & continue
@@ -401,7 +392,7 @@ isolate system = {
             individual last_start_round : time
             individual timeout : time
 
-            action notify_join_round(r:round)
+            action notify_join_round(r:round_t)
             action increase_time
             action is_leader_too_quiet returns (res: bool)
             action start_round_timed_out returns (res: bool)
@@ -412,7 +403,7 @@ isolate system = {
                 timeout := 3;
             }
 
-            implement notify_join_round(r:round) {
+            implement notify_join_round(r:round_t) {
                 if (leader_of(self,r)) {
                     last_start_round := my_time
                 };
@@ -470,15 +461,15 @@ isolate system = {
         # decide messages        
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.decide & ~abs_paxos.decision(msg.m_inst(M),msg.m_value(M)))
 
-        # # keep-alive messages
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.keep_alive & current_round < msg.m_round(M) & leader_of(self, msg.m_round(M)))
+        # keep-alive messages
+        invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.keep_alive & current_round < msg.m_round(M) & leader_of(self, msg.m_round(M)))
         
         # round of a message:
         invariant ~(shim.sent(M,D) & (msg.m_kind(M) = msg_kind.one_a | msg.m_kind(M) = msg_kind.two_a | msg.m_kind(M) = msg_kind.one_b | msg.m_kind(M) = msg_kind.two_b) & msg.m_round(M) > server.current_round(msg.m_node(M)))
         
         # current_round and active:
-        # invariant leader_of(self, current_round) -> (round_active <-> abs_paxos.active(current_round))
-        # invariant ~(leader_of(self, R) & abs_paxos.active(R) & R > current_round)
+        invariant leader_of(self, current_round) -> (round_active <-> abs_paxos.active(current_round))
+        invariant ~(leader_of(self, R) & abs_paxos.active(R) & R > current_round)
         # invariant ~(leader_of(self, current_round) & round_active & ~abs_paxos.active(current_round))
 
         # one_as are sent by leaders
@@ -515,38 +506,37 @@ isolate system = {
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & server.current_round(D) < msg.m_round(M))
         # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).upper < msg.m_votemap(M).first)
         # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & server.current_round(D) = msg.m_round(M) & ~server.round_active(D) & msg.m_votemap(M).first ~= server.joined_votes(D).first)
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).first <= I & votemap_seg_ops.maxvote(msg.m_votemap(M),I).the_round = none & R < msg.m_round(M) & abs_paxos.vote(msg.m_node(M), I, R, V))
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).first <= I & MAXR = votemap_seg_ops.maxvote(msg.m_votemap(M),I).the_round & MAXR ~= 0 & (~abs_paxos.vote(msg.m_node(M), I, MAXR, votemap_seg_ops.maxvote(msg.m_votemap(M),I).the_value) | (R > MAXR & R < msg.m_round(M) & abs_paxos.vote(msg.m_node(M), I, R, V))))
+        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).first <= I & votemap_seg_ops.maxvote(msg.m_votemap(M),I).rnd = none & R < msg.m_round(M) & abs_paxos.vote(msg.m_node(M), I, R, V))
+        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).first <= I & MAXR = votemap_seg_ops.maxvote(msg.m_votemap(M),I).rnd & MAXR ~= 0 & (~abs_paxos.vote(msg.m_node(M), I, MAXR, votemap_seg_ops.maxvote(msg.m_votemap(M),I).val) | (R > MAXR & R < msg.m_round(M) & abs_paxos.vote(msg.m_node(M), I, R, V))))
 
         # #  the joined_votes and joined data-structures
         # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.upper < joined_votes.first)
-        # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).the_round = none & nset.member(N,joined) & R < current_round & abs_paxos.vote(N,I,R,V))
-        # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).the_round ~= none & nset.member(N,joined) & (votemap_seg_ops.maxvote(joined_votes,I).the_round < R & R < current_round & abs_paxos.vote(N,I,R,V)))
-        # invariant ~(current_round ~= 0 & leader_of(self, current_round) & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).the_round ~= 0 & ~abs_paxos.proposal(I,votemap_seg_ops.maxvote(joined_votes,I).the_round,votemap_seg_ops.maxvote(joined_votes,I).the_value))
+        # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).rnd = none & nset.member(N,joined) & R < current_round & abs_paxos.vote(N,I,R,V))
+        # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).rnd ~= none & nset.member(N,joined) & (votemap_seg_ops.maxvote(joined_votes,I).rnd < R & R < current_round & abs_paxos.vote(N,I,R,V)))
+        # invariant ~(current_round ~= 0 & leader_of(self, current_round) & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).rnd ~= 0 & ~abs_paxos.proposal(I,votemap_seg_ops.maxvote(joined_votes,I).rnd,votemap_seg_ops.maxvote(joined_votes,I).val))
         # invariant ~(leader_of(self, current_round) & nset.member(N,joined) & ~abs_paxos.joined_round(N,current_round))
 
         # the votes array (which represent the node's own votes)
-        invariant I < my_votes.end() & my_votes.value(I).present -> my_votes.value(I).the_round <= current_round
-        # invariant I < my_votes.end() -> ~(MAXR = my_votes.value(I).the_round & (~abs_paxos.vote(self, I, MAXR, my_votes.value(I).the_value) | (MAXR < R & abs_paxos.vote(self,I,R,V))))
+        invariant I < my_votes.end() & my_votes.present(I) -> (my_votes.rnd(I) <= current_round & abs_paxos.vote(self, I, my_votes.rnd(I), my_votes.val(I)) & (my_votes.rnd(I) < R -> ~abs_paxos.vote(self,I,R,V)))
         
-        # # decisions:
-        # invariant decided(I,V) -> abs_paxos.decision(I,V)
-        # invariant ~(I < my_log.end & my_log.value(I).present & ~decided(I,my_log.value(I).decision))
+        # decisions:
+        invariant decided(I,V) -> abs_paxos.decision(I,V)
+        invariant ~(I < my_log.end & my_log.value(I).present & ~decided(I,my_log.value(I).decision))
         
     }
-} with nset, votemap, abs_paxos, round_leader, round, shim, inst, not_a_vote_def
+} with nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def
 
 export system.server.propose
 export system.server.query
 import system.server.decide
 
 object impl_defs = {
-    interpret value -> strlit
+    interpret value_t -> strlit
     definition no_op = "" 
-    definition round_leader.leader_fun(r:round) = <<< r % `node.size` >>>
+    definition round_leader.leader_fun(r:round_t) = <<< r % `node.size` >>>
 }
 
-extract code(self:node) = nset, node, system, system.server(self), shim(self), net(self), inst, round, votemap, round_leader, impl_defs, not_a_vote_def
+extract code(self:node) = nset, node, system, system.server(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def
 
 # to check: run "ivy_check multi_paxos_system.ivy"
 # to check only the system isolate: run "ivy_check isolate=system multi_paxos_system.ivy"
