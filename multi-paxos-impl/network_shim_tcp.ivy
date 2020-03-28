@@ -67,6 +67,8 @@ isolate shim = {
         action debug_receiving(dst:node,m:msg)
 
         implement net.recv(dst:node,m:msg) {
+
+            call debug_receiving(dst,m);
             
             if m.m_kind = msg_kind.one_a {
                 call one_a_handler.handle(dst,m)

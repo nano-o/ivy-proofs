@@ -20,7 +20,7 @@ isolate round_leader = {
     }
     implementation {
         function leader_fun(R:round_t) : node
-        definition leader_of(N,R) = (R ~= 0 & N = leader_fun(R))
+        definition leader_of(N,R) = (N = leader_fun(R))
     }
 }
 
@@ -185,6 +185,14 @@ isolate system = {
         }
 
         implement shim.one_b_handler.handle(m:msg) {
+            if current_round = m.m_round & ~round_active {
+                joined := joined.add(m.m_node);
+            }; 
+
+            # activate round:
+            if joined.majority {
+                round_active := true;
+            }
         }
         
         # receiving a proposal:
@@ -398,8 +406,9 @@ isolate system = {
             action start_round_timed_out returns (res: bool)
             
             after init {
-                last_heard_from_leader := my_time;
-                last_start_round := my_time;
+                my_time := 0;
+                last_heard_from_leader := 0;
+                last_start_round := 0;
                 timeout := 3;
             }
 
@@ -417,12 +426,13 @@ isolate system = {
                 res := my_time - last_heard_from_leader >= timeout
             }
             
+            # action debug_tick(t:time, b:bool)
+            # import debug_tick
+
             action tick = {
                 my_time := my_time.next;
-                if (current_round = 0) {
-                    call start_round
-                }
-                else if (~leader_of(self,current_round)) {
+                #call debug_tick(my_time, leader_of(self,current_round));
+                if (~leader_of(self,current_round)) {
                     if is_leader_too_quiet {
                         call start_round
                     }
