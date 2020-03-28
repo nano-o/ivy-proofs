@@ -118,9 +118,9 @@ module tcp_network(addr,pkt) = {
             ack(self,s) := false;
         }
 
-        around send {
-            require open(self,s);
-            ...
+        after send {
+            # TODO: if not open, 16 packets will be enqueued 
+            # require open(self,s);
             if ok {
                 if some (other:addr,s2:socket) conn(self,s,other,s2) {
                     sent_to(other,s2,p) := true
@@ -190,8 +190,6 @@ module simple_tcp(addr,pkt) = {
     }
 
     implementation {
-        # TODO: packets are lost while the connection is being established.
-        # We could add an array of pending packets to be sent once the connection is established.
 
         instance tcp : tcp_network(addr,pkt)
 
@@ -219,7 +217,10 @@ module simple_tcp(addr,pkt) = {
                 # TODO: check that this is safe...
                 var ok := tcp.send(self,sock(dst),v);
                 if ~ok {
-                    call tcp.close(self,sock(dst));
+                    # TODO: if it's being opened, we have a problem...
+                    if (isup(dst)) {
+                        call tcp.close(self,sock(dst));
+                    };
                     sock(dst) := tcp.connect(self,dst);
                     isup(dst) := false;
                     pend(dst) := true
