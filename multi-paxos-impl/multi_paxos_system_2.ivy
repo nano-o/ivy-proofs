@@ -177,10 +177,23 @@ isolate system = {
 
         action notify_join_round(r:round_t)
 
-        # ...
-
         specification {
-            # ...
+
+            individual round_active:bool
+            individual current_round:round_t
+
+            after init {
+                current_round := 0;
+            }
+            before send_keep_alive {
+                assert leader_of(self, current_round)
+            } 
+            before notify_join_round {
+                current_round := r
+            }
+            before retransmit_two_a {
+                assert leader_of(self, current_round)
+            } 
         }
     }
 
@@ -391,14 +404,24 @@ isolate system = {
         }
 
         implement control_intf.retransmit_two_a(i:inst_t) {
-            var m:msg;
-            m.m_kind := msg_kind.two_a;
-            m.m_node := self;
+            if i < inst_status.end & inst_status.value(i).active {
+                var m:msg;
+                m.m_kind := msg_kind.two_a;
+                m.m_node := self;
+                m.m_round := current_round;
+                m.m_inst := i;
+                m.m_value := inst_status.value(i).proposal;
+                call shim.bcast(self, m);
+                call control_intf(self).notify_two_a(i);
+            }
+        }
+
+        implement control_intf.send_keep_alive {
+            var m : msg;
+            m.m_kind := msg_kind.keep_alive;
             m.m_round := current_round;
-            m.m_inst := i;
-            m.m_value := inst_status.value(i).proposal;
-            call shim.bcast(self, m);
-            call control_intf(self).notify_two_a(i);
+            m.m_node := self;
+            call shim.bcast(self,m);
         }
 
         ################################################################################
@@ -491,15 +514,6 @@ isolate system = {
             }
         }
 
-        object timer = {
-            # timeout_sec is a standard module that calls timeout every second:
-            instance sec : timeout_sec
-            implement sec.timeout { # every second
-                call controller(self).leader_election.tick;
-                call controller(self).two_a_retransmitter.tick;
-            }
-        }
-
         # Invariants:
 
         # # round 0:
@@ -510,6 +524,7 @@ isolate system = {
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.decide & ~abs_paxos.decision(msg.m_inst(M),msg.m_value(M)))
 
         # keep-alive messages
+        invariant current_round = control_intf(self).current_round
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.keep_alive & current_round < msg.m_round(M) & leader_of(self, msg.m_round(M)))
         
         # round of a message:
@@ -524,8 +539,8 @@ isolate system = {
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & ~leader_of(msg.m_node(M),msg.m_round(M)))
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & ~leader_of(D,msg.m_round(M)))
 
-        # # next_inst bounds proposals
-        # invariant ~(leader_of(self, current_round) & next_inst <= I & abs_paxos.proposal(I, current_round,V))
+        # next_inst bounds proposals
+        invariant ~(leader_of(self, current_round) & next_inst <= I & abs_paxos.proposal(I, current_round,V))
         # invariant round_active & leader_of(self, current_round) & next_inst <= I -> abs_paxos.available(current_round,I)
         
         # current_round bounds proposals and votes
@@ -579,10 +594,14 @@ isolate system = {
 
     object controller(self:node) = {
 
-        individual round_active:bool
-        individual current_round:round_t
-        individual first_undecided:inst_t
-        individual last_started:inst_t
+        object timer = {
+            # timeout_sec is a standard module that calls timeout every second:
+            instance sec : timeout_sec
+            implement sec.timeout { # every second
+                call leader_election.tick;
+                call two_a_retransmitter.tick;
+            }
+        }
 
         # object that starts new rounds when timing out on the leader and sends heartbeat messages when self is a leader.
         object leader_election = {
@@ -624,29 +643,25 @@ isolate system = {
             action tick = {
                 my_time := my_time.next;
                 #call debug_tick(my_time, leader_of(self,current_round));
-                if (~leader_of(self,current_round)) {
+                if (~leader_of(self,control_intf(self).current_round)) {
                     if is_leader_too_quiet {
                         call control_intf(self).start_new_round
                     }
                 }
                 else {
-                    if ~round_active {
+                    if ~control_intf(self).round_active {
                         if start_round_timed_out {
                             call control_intf(self).start_new_round
                         }
                     } else {
-                        var m : msg;
-                        m.m_kind := msg_kind.keep_alive;
-                        m.m_round := current_round;
-                        m.m_node := self;
-                        call shim.bcast(self,m);
+                        call control_intf(self).send_keep_alive
                     }
                 }
             }
 
             implement shim.keep_alive_handler.handle(m:msg) {
                 var r := m.m_round;
-                if current_round < r {
+                if control_intf(self).current_round < r {
                     call control_intf(self).change_round(r);
                 };
                 last_heard_from_leader := my_time;
@@ -657,12 +672,20 @@ isolate system = {
         object two_a_retransmitter = {
             individual two_a_times:timearray
             individual current_time:time
+            individual last_started:inst_t
+            individual first_undecided:inst_t
+
             after init {
                 current_time := 0;
                 two_a_times := timearray.empty;
+                last_started := 0;
+                first_undecided := 0;
             }
             
             action notify_two_a(i:inst_t) = {
+                if (last_started < i) {
+                    last_started := i
+                };
                 if (two_a_times.end <= i) {
                     two_a_times := two_a_times.resize(i.next,0)
                 };
@@ -670,8 +693,8 @@ isolate system = {
             }
             
             action tick = {
-                if (leader_of(self, current_round) & round_active) {
-                    var i:inst_t := first_undecided;
+                if (leader_of(self, control_intf(self).current_round) & control_intf(self).round_active) {
+                    var i:inst_t := 0; # TODO: should be first_undecided;
                     while (i < last_started)
                     invariant i <= last_started
                     {
@@ -700,7 +723,7 @@ object impl_defs = {
     definition round_leader.leader_fun(r:round_t) = <<< r % `node.size` >>>
 }
 
-extract code(self:node) = nset, node, system, system.server(self), system.model(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def
+extract code(self:node) = nset, node, system, system.server(self), system.model(self), system.controller(self), system.control_intf(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def
 
 # to check: run "ivy_check multi_paxos_system.ivy"
 # to check only the system isolate: run "ivy_check isolate=system multi_paxos_system.ivy"
