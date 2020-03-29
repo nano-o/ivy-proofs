@@ -5,6 +5,25 @@
 
 include tcp
 include multi_paxos_protocol
+include window_adt
+
+type vote_struct = struct {
+   rnd : round_t,
+   val: value_t,
+   present : bool 
+}
+
+individual not_a_vote : vote_struct
+trusted isolate not_a_vote_def = {
+     specification {
+         invariant not_a_vote.present = false
+     }
+    implementation { # TODO: dirty hack to prevent Ivy from tryin to find a value for not_a_vote by getting a model (which diverges)
+        definition not_a_vote = <<< (vote_struct){0,"",false} >>>
+    }
+}
+
+instance win : window(inst_t, vote_struct, not_a_vote)
 
 object msg_kind = {
     type this = {one_a, one_b, two_a, two_b, keep_alive, decide}
@@ -16,8 +35,8 @@ object msg = {
         m_round : round_t,
         m_inst : inst_t,
         m_node : node,
-        m_value : value_t
-        #,m_votemap : votemap_seg
+        m_value : value_t,
+        m_votes : win
     }
 }
 
@@ -68,7 +87,6 @@ isolate shim = {
 
     implementation {
 
-        # Do not change, key-value store shim depends on those:
         action debug_sending(src:node,dst:node,m:msg)
         action debug_receiving(dst:node,m:msg)
 
@@ -137,7 +155,8 @@ import shim.debug_receiving
 # export shim.unicast
 
 # object impl_defs = {
-#     interpret value -> strlit
+#     interpret value_t -> strlit
 # }
 
-# extract code(self:node) = node, shim(self), net(self), round_t, inst_t, impl_defs
+# extract code(self:node) = node, shim(self), net(self), round_t, inst_t, impl_defs, win, not_a_vote_def
+

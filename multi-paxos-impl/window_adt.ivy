@@ -262,7 +262,7 @@ module window(domain,range,none) = {
         # the window and a number to represent the offset. These two
         # fields are declared as destructors of the type. 
 
-        instance shift : shift_theory(slot)
+        instance shift : shift_theory(domain)
         instance arr : array(domain,range)
         destructor elems(W:this) : arr
         destructor offset(W:this) : domain
@@ -392,24 +392,24 @@ module window(domain,range,none) = {
 # To test our module, with instantiate it with appropriate types and
 # export its actions to the environment.
 
-instance slot : unbounded_sequence
-type data
-individual none : data
+# instance slot : unbounded_sequence
+# type data
+# individual none : data
 
-instance foo : window(slot,data,none)
+# instance foo : window(slot,data,none)
 
-export foo.set
-export foo.read
-export foo.trim
-export foo.empty
-export foo.getBegin
-export foo.getEnd
+# export foo.set
+# export foo.read
+# export foo.trim
+# export foo.empty
+# export foo.getBegin
+# export foo.getEnd
 
-isolate impl_defs = {
-    implementation {
-        interpret data -> int
-        definition none = 0
-    }
-}
+# isolate impl_defs = {
+#     implementation {
+#         interpret data -> int
+#         definition none = 0
+#     }
+# }
 
-extract iso_impl = foo, slot, impl_defs
+# extract code = foo, slot, impl_defs

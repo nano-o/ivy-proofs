@@ -9,12 +9,6 @@ instance round_t : unbounded_sequence
 instance inst_t : unbounded_sequence # instances, i.e. positions in the log
 type value_t
 
-type vote_struct = struct {
-   rnd : round_t,
-   val: value_t,
-   present : bool 
-}
-
 isolate abs_paxos = {
 
     relation left_round(N:node, R:round_t)

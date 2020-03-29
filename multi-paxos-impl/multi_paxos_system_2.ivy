@@ -59,18 +59,6 @@ object votemap = {
 # no_ops to fill holes in the log
 individual no_op : value_t
 
-individual not_a_vote : vote_struct
-isolate not_a_vote_def = {
-    specification {
-        invariant not_a_vote.present = false
-    }
-    implementation {
-        after init {
-            not_a_vote.present := false
-        }
-    }
-}
-
 # Multi-Paxos implementation
 isolate system = {
     
@@ -167,15 +155,15 @@ isolate system = {
         # start a new round
         action start_new_round
 
-        action change_round(r : round_t)
-
         # Calls from model to controller
 
         action notify_decision(i:inst_t)
 
         action notify_two_a(i:inst_t)
 
-        action notify_join_round(r:round_t)
+        action notify_changed_round(r:round_t)
+
+        action notify_keep_alive
 
         individual current_round:round_t
 
@@ -187,7 +175,7 @@ isolate system = {
             before send_keep_alive {
                 assert leader_of(self, current_round)
             } 
-            before notify_join_round {
+            before notify_changed_round {
                 current_round := r
             }
             before retransmit_two_a {
@@ -264,14 +252,6 @@ isolate system = {
         ################################################################################
         # Here, we implement the handler side of the network interface
 
-        action build_proposal(j:inst_t, v:value_t) returns (m:msg) = {
-            m.m_kind := msg_kind.two_a;
-            m.m_round := current_round;
-            m.m_node := self;
-            m.m_inst := j;
-            m.m_value := v;
-        }
-
         implement shim.one_a_handler.handle(m:msg) {
             if current_round < m.m_round {
                 call change_round(m.m_round);
@@ -293,12 +273,6 @@ isolate system = {
             # if joined.majority {
             #     round_active := true;
             # }
-        }
-
-        implement shim.notify_round(r:round_t) {
-            if (current_round < r) {
-                call change_round(r);
-            };
         }
         
         # receiving a proposal:
@@ -382,7 +356,13 @@ isolate system = {
                 inst_status := inst_status.set(m.m_inst,status)
             }
         }
-        
+
+        implement shim.keep_alive_handler.handle(m:msg) {
+            var r := m.m_round;
+            if current_round < r {
+                call change_round(r);
+            };
+        }
 
         ################################################################################
         # Here we implement the model side of the controller/model interface
@@ -426,6 +406,15 @@ isolate system = {
         ################################################################################
         # Here we have internal actions
 
+
+        action build_proposal(j:inst_t, v:value_t) returns (m:msg) = {
+            m.m_kind := msg_kind.two_a;
+            m.m_round := current_round;
+            m.m_node := self;
+            m.m_inst := j;
+            m.m_value := v;
+        }
+
         # TODO: wrap in an object to expose only a spec?
         action next_self_leader_round(r:round_t) returns (s:round_t) = {
             # find the next round in which self is leader
@@ -441,7 +430,7 @@ isolate system = {
         action change_round(r:round_t) = {
             current_round := r;
             call abs_paxos.join_round(self, r); # ghost
-            call control_intf(self).notify_join_round(current_round);
+            call control_intf(self).notify_changed_round(current_round);
             
             round_active := false;
             # reset round data for new round.
@@ -631,7 +620,11 @@ isolate system = {
                 timeout := 3;
             }
 
-            implement control_intf.notify_join_round(r:round_t) {
+            implement control_intf.notify_keep_alive {
+                last_heard_from_leader := my_time; 
+            }
+
+            implement control_intf.notify_changed_round(r:round_t) {
                 if (leader_of(self,r)) {
                     last_start_round := my_time
                 };
@@ -666,14 +659,6 @@ isolate system = {
                         call control_intf(self).send_keep_alive
                     }
                 }
-            }
-
-            implement shim.keep_alive_handler.handle(m:msg) {
-                var r := m.m_round;
-                if current_round < r {
-                    call control_intf(self).change_round(r);
-                };
-                last_heard_from_leader := my_time;
             }
         }
 
@@ -732,9 +717,7 @@ object impl_defs = {
     definition round_leader.leader_fun(r:round_t) = <<< r % `node.size` >>>
 }
 
-#isolate code_iso(self:node) = nset, node, system, system.server(self), system.model(self), system.controller(self), system.control_intf(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def
-
-extract code(self:node) = nset, node, system, system.server(self), system.model(self), system.controller(self), system.control_intf(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def
+extract code(self:node) = nset, node, system, system.server(self), system.model(self), system.controller(self), system.control_intf(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def, win
 
 # to check: run "ivy_check multi_paxos_system.ivy"
 # to check only the system isolate: run "ivy_check isolate=system multi_paxos_system.ivy"
