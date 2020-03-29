@@ -71,18 +71,20 @@ isolate system = {
     
     instance log : array(inst_t, decision_struct)
     
+    individual no_decision : decision_struct
+    object no_decision_initialization = {
+        after init {
+            no_decision.present := false
+        }
+        invariant ~no_decision.present
+    }   
+
     object server(self:node) = {
 
         # API for client code:
         # returns false and does nothing if called on a node where leader_of(self,current_round)=false or current_round is not yet active.
         action propose(v:value_t) returns (r:bool)
-        individual no_decision : decision_struct
-        object no_decision_initialization = {
-            after init {
-                no_decision.present := false
-            }
-            invariant ~no_decision.present
-        }
+
         # called by the client to query the log
         action query(i:inst_t) returns (d:decision_struct)
 
@@ -111,13 +113,15 @@ isolate system = {
                 ensure d.present -> decided(i,d.decision)
             }
         }
+    }
+
+    object model(self:node) = {
         
         individual current_round : round_t
         individual next_inst : inst_t # next free consensus instance 
         individual inst_status : ballot_status_array # votes received in the current round, per instance
         individual my_log : log # the decision log
         individual first_undecided : inst_t # the first "hole" in the log
-
         # data structures used upon leadership change:
         relation round_active # true when successfully acquired leadership
         individual my_votes : votemap # max votes by self.
@@ -141,7 +145,7 @@ isolate system = {
             first_undecided := 0;
         }
         
-        implement query(i:inst_t) {
+        implement server.query(i:inst_t) {
             if is_decided(i) {
                 d.decision := my_log.value(i).decision;
                 d.present := true;
@@ -157,7 +161,7 @@ isolate system = {
             m.m_value := v;
         }
 
-        implement propose(v:value_t) returns (ret:bool) {
+        implement server.propose(v:value_t) returns (ret:bool) {
             if leader_of(self, current_round) & round_active & current_round = 0 { # TODO
                 call abs_paxos.propose(next_inst, current_round, v);
                 var m:msg := build_proposal(next_inst,v);
@@ -199,7 +203,7 @@ isolate system = {
                 joined := joined.add(m.m_node);
             }; 
 
-            # activate round:
+            # TODO: activate round
             # if joined.majority {
             #     round_active := true;
             # }
@@ -247,7 +251,7 @@ isolate system = {
                 status.decided := true;
                 inst_status := inst_status.set(m.m_inst,status);
                 
-                call decide(m.m_inst,m.m_value);
+                call server(self).decide(m.m_inst,m.m_value);
             }
         }
         
@@ -282,7 +286,7 @@ isolate system = {
                     call shim.bcast(self,m2);
 
                     call abs_paxos.decide(m.m_inst, m.m_round, m.m_value, status.voters); # ghost
-                    call decide(m.m_inst, m.m_value);
+                    call server(self).decide(m.m_inst, m.m_value);
                 };
                 inst_status := inst_status.set(m.m_inst,status)
             }
@@ -528,7 +532,7 @@ isolate system = {
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.keep_alive & current_round < msg.m_round(M) & leader_of(self, msg.m_round(M)))
         
         # round of a message:
-        invariant ~(shim.sent(M,D) & (msg.m_kind(M) = msg_kind.one_a | msg.m_kind(M) = msg_kind.two_a | msg.m_kind(M) = msg_kind.one_b | msg.m_kind(M) = msg_kind.two_b) & msg.m_round(M) > server.current_round(msg.m_node(M)))
+        invariant ~(shim.sent(M,D) & (msg.m_kind(M) = msg_kind.one_a | msg.m_kind(M) = msg_kind.two_a | msg.m_kind(M) = msg_kind.one_b | msg.m_kind(M) = msg_kind.two_b) & msg.m_round(M) > model.current_round(msg.m_node(M)))
         
         # current_round and active:
         invariant leader_of(self, current_round) -> (round_active <-> abs_paxos.active(current_round))
@@ -563,12 +567,12 @@ isolate system = {
          invariant ~(I < inst_status.end & nset.member(N,inst_status.value(I).voters) & ~abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal))
 
         # one_a messages
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & server.current_round(msg.m_node(M)) = msg.m_round(M) & ~server.round_active(msg.m_node(M)) & msg.m_inst(M) ~= server.joined_votes(msg.m_node(M)).first)
+        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & model.current_round(msg.m_node(M)) = msg.m_round(M) & ~model.round_active(msg.m_node(M)) & msg.m_inst(M) ~= model.joined_votes(msg.m_node(M)).first)
         
         # one_b messages
-        invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & server.current_round(D) < msg.m_round(M))
+        invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & model.current_round(D) < msg.m_round(M))
         # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).upper < msg.m_votemap(M).first)
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & server.current_round(D) = msg.m_round(M) & ~server.round_active(D) & msg.m_votemap(M).first ~= server.joined_votes(D).first)
+        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & model.current_round(D) = msg.m_round(M) & ~model.round_active(D) & msg.m_votemap(M).first ~= model.joined_votes(D).first)
         # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).first <= I & votemap_seg_ops.maxvote(msg.m_votemap(M),I).rnd = none & R < msg.m_round(M) & abs_paxos.vote(msg.m_node(M), I, R, V))
         # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).first <= I & MAXR = votemap_seg_ops.maxvote(msg.m_votemap(M),I).rnd & MAXR ~= 0 & (~abs_paxos.vote(msg.m_node(M), I, MAXR, votemap_seg_ops.maxvote(msg.m_votemap(M),I).val) | (R > MAXR & R < msg.m_round(M) & abs_paxos.vote(msg.m_node(M), I, R, V))))
 
@@ -583,11 +587,14 @@ isolate system = {
         invariant I < my_votes.end() & my_votes.present(I) -> (my_votes.rnd(I) <= current_round & abs_paxos.vote(self, I, my_votes.rnd(I), my_votes.val(I)) & (my_votes.rnd(I) < R -> ~abs_paxos.vote(self,I,R,V)))
         
         # decisions:
-        invariant decided(I,V) -> abs_paxos.decision(I,V)
-        invariant ~(I < my_log.end & my_log.value(I).present & ~decided(I,my_log.value(I).decision))
+        invariant server(self).decided(I,V) -> abs_paxos.decision(I,V)
+        invariant ~(I < my_log.end & my_log.value(I).present & ~server(self).decided(I,my_log.value(I).decision))
         
     }
-} with nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def
+
+    isolate iso_model = model with server, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_obj, time, timearray, log, no_decision_initialization
+
+} with system.model, shim, abs_paxos, nset
 
 export system.server.propose
 export system.server.query
@@ -599,7 +606,7 @@ object impl_defs = {
     definition round_leader.leader_fun(r:round_t) = <<< r % `node.size` >>>
 }
 
-extract code(self:node) = nset, node, system, system.server(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def
+extract code(self:node) = nset, node, system, system.server(self), system.model(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def
 
 # to check: run "ivy_check multi_paxos_system.ivy"
 # to check only the system isolate: run "ivy_check isolate=system multi_paxos_system.ivy"
