@@ -55,15 +55,17 @@ isolate abs_paxos = {
         }
         
         action propose(i:inst_t, r:round_t, v:value_t, maxr:round_t) = {
-            local q:nset {
-                require ~proposal(i, r, V);
-                require nset.majority(q);
-                require nset.member(N, q) & R < r -> left_round(N,R);
-                require 
+            require ~proposal(i, r, V);
+            if (r ~= 0) { # everything is safe at 0
+                local q:nset {
+                    require nset.majority(q);
+                    require nset.member(N, q) & R < r -> left_round(N,R);
+                    require 
                     (forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,i,R,V))) |
                     (proposal(I, maxr, v) & (forall N,R,V.  ~(nset.member(N, q) & maxr < R & R < r & vote(N,i,R,V))));
-                proposal(i, r, v) := true
-            }
+                };
+            };
+            proposal(i, r, v) := true
         }
 
         action cast_vote(n:node, i:inst_t, r:round_t, v:value_t) = {
