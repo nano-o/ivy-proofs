@@ -35,7 +35,7 @@ isolate shim = {
     }
 
     relation sent(M:msg,N:node)
-
+    
     instance one_a_handler : handler(msg_kind.one_a)
     instance one_b_handler : handler(msg_kind.one_b)
     instance two_a_handler : handler(msg_kind.two_a)
@@ -45,6 +45,8 @@ isolate shim = {
 
     action bcast(src:node,m:msg)
     action unicast(src:node,dst:node,m:msg)
+
+    action notify_round(dst:node, r:round_t) # upcall
 
     specification {
         after init {
@@ -58,6 +60,10 @@ isolate shim = {
         before unicast {
             sent(m,dst) := true;
         }
+
+        before notify_round(dst:node, r:round_t) {
+            assert exists M:msg . sent(M,dst) & M.m_round = r
+        }
     }
 
     implementation {
@@ -67,6 +73,7 @@ isolate shim = {
         action debug_receiving(dst:node,m:msg)
 
         implement net.recv(dst:node,m:msg) {
+            call notify_round(dst, m.m_round);
             
             if m.m_kind = msg_kind.one_a {
                 call one_a_handler.handle(dst,m)
