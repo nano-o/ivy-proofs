@@ -177,10 +177,9 @@ isolate system = {
 
         action notify_join_round(r:round_t)
 
-        specification {
+        individual current_round:round_t
 
-            individual round_active:bool
-            individual current_round:round_t
+        specification {
 
             after init {
                 current_round := 0;
@@ -242,7 +241,7 @@ isolate system = {
                 call abs_paxos.propose(next_inst, current_round, v, 0); # TODO
                 var m:msg := build_proposal(next_inst,v);
                 call shim.bcast(self,m);
-                call controller(self).two_a_retransmitter.notify_two_a(next_inst);
+                call control_intf(self).notify_two_a(next_inst);
                 
                 call vote(self, next_inst, v);
 
@@ -404,7 +403,7 @@ isolate system = {
         }
 
         implement control_intf.retransmit_two_a(i:inst_t) {
-            if i < inst_status.end & inst_status.value(i).active {
+            if i < inst_status.end & inst_status.value(i).active & ~inst_status.value(i).decided {
                 var m:msg;
                 m.m_kind := msg_kind.two_a;
                 m.m_node := self;
@@ -594,6 +593,16 @@ isolate system = {
 
     object controller(self:node) = {
 
+        individual round_active:bool
+        individual current_round:round_t
+
+        invariant current_round = control_intf(self).current_round
+
+        after init {
+            current_round := 0;
+            round_active := leader_of(self, 0);
+        }
+
         object timer = {
             # timeout_sec is a standard module that calls timeout every second:
             instance sec : timeout_sec
@@ -611,7 +620,6 @@ isolate system = {
             individual last_start_round : time
             individual timeout : time
 
-            action notify_join_round(r:round_t)
             action increase_time
             action is_leader_too_quiet returns (res: bool)
             action start_round_timed_out returns (res: bool)
@@ -623,11 +631,12 @@ isolate system = {
                 timeout := 3;
             }
 
-            implement notify_join_round(r:round_t) {
+            implement control_intf.notify_join_round(r:round_t) {
                 if (leader_of(self,r)) {
                     last_start_round := my_time
                 };
-                last_heard_from_leader := my_time
+                last_heard_from_leader := my_time;
+                current_round := r
             }
             
             implement start_round_timed_out {
@@ -643,13 +652,13 @@ isolate system = {
             action tick = {
                 my_time := my_time.next;
                 #call debug_tick(my_time, leader_of(self,current_round));
-                if (~leader_of(self,control_intf(self).current_round)) {
+                if (~leader_of(self,current_round)) {
                     if is_leader_too_quiet {
                         call control_intf(self).start_new_round
                     }
                 }
                 else {
-                    if ~control_intf(self).round_active {
+                    if ~round_active {
                         if start_round_timed_out {
                             call control_intf(self).start_new_round
                         }
@@ -661,7 +670,7 @@ isolate system = {
 
             implement shim.keep_alive_handler.handle(m:msg) {
                 var r := m.m_round;
-                if control_intf(self).current_round < r {
+                if current_round < r {
                     call control_intf(self).change_round(r);
                 };
                 last_heard_from_leader := my_time;
@@ -682,7 +691,7 @@ isolate system = {
                 first_undecided := 0;
             }
             
-            action notify_two_a(i:inst_t) = {
+            implement control_intf.notify_two_a(i:inst_t) {
                 if (last_started < i) {
                     last_started := i
                 };
@@ -693,7 +702,7 @@ isolate system = {
             }
             
             action tick = {
-                if (leader_of(self, control_intf(self).current_round) & control_intf(self).round_active) {
+                if (leader_of(self, current_round) & round_active) {
                     var i:inst_t := 0; # TODO: should be first_undecided;
                     while (i < last_started)
                     invariant i <= last_started
@@ -722,6 +731,8 @@ object impl_defs = {
     definition no_op = "" 
     definition round_leader.leader_fun(r:round_t) = <<< r % `node.size` >>>
 }
+
+#isolate code_iso(self:node) = nset, node, system, system.server(self), system.model(self), system.controller(self), system.control_intf(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def
 
 extract code(self:node) = nset, node, system, system.server(self), system.model(self), system.controller(self), system.control_intf(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def
 
