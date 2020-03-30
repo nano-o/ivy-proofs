@@ -1,0 +1,62 @@
+#lang ivy1.7
+
+include window_adt
+
+module my_window(domain,range,none,arr) = {
+    instantiate window(domain,range,none)
+    action make_from_array(i:domain, a:arr) returns (w:this)
+    specification {
+        around make_from_array {
+            require 0 <= i & i < a.end;
+            ...
+            ensure begin(w,I) <-> I = i;
+            ensure i <= I & I < a.end & a.value(I) = V -> value(w, I, V);
+            ensure (I < i | a.end <= I) -> (value(w, I, V) <-> V = none);
+        }
+    }
+    implementation {
+        implement make_from_array {
+            w := empty(i);
+            var j := i;
+            while (j < a.end)
+            invariant i <= j
+            invariant j <= a.end
+            invariant i <= J & J < j -> w.value(J,a.value(J))
+            invariant w.begin(i)
+            invariant j <= J -> w.value(J,none)
+            {
+                w := w.set(j, a.value(j));
+                j := j.next;
+            }
+        }
+    }
+}
+
+
+instance slot : unbounded_sequence
+type data
+individual none : data
+
+instance arr : array(slot,data)
+
+instance foo : my_window(slot,data,none,arr)
+
+export foo.set
+export foo.read
+export foo.trim
+export foo.empty
+export foo.getBegin
+export foo.getEnd
+export foo.make
+export foo.make_from_array
+
+isolate test = foo with arr, slot
+
+isolate impl_defs = {
+    implementation {
+        interpret data -> int
+        definition none = 0
+    }
+}
+
+extract code = foo, slot, impl_defs
