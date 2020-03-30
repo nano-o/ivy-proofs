@@ -2,9 +2,13 @@
 
 include window_adt
 
-module my_window(domain,range,none,arr_t) = { # TODO: renaming arr_t to arr causes mayhem becauase it clashes with arr defined in window_adt.ivy, but this is not detected as a problem by Ivy.
+include common
+
+module my_window(domain,range,none,arr_t,rank) = { # TODO: renaming arr_t to arr causes mayhem becauase it clashes with arr defined in window_adt.ivy, but this is not detected as a problem by Ivy.
     instantiate window(domain,range,none)
     action make_from_array(i:domain, a:arr_t) returns (w:this)
+    action zip_max(w1:this, w2:this) returns (res:this)
+
     specification {
         around make_from_array {
             require 0 <= i & i < a.end;
@@ -13,6 +17,16 @@ module my_window(domain,range,none,arr_t) = { # TODO: renaming arr_t to arr caus
             ensure i <= I & I < a.end & a.value(I) = V -> value(w, I, V);
             ensure (I < i | a.end <= I) -> (value(w, I, V) <-> V = none);
         }
+
+        around zip_max {
+            require exists I . begin(w1,I) & begin(w2,I)
+            ...
+            ensure value(w1,I,V1) & value(w2,I,V2) & rank(V2) > rank(V1) -> value(res,I,V2);
+            ensure value(w1,I,V1) & value(w2,I,V2) & rank(V1) >= rank(V2) -> value(res,I,V1);
+            # NOTE: this has a QA cycle:
+            # ensure (exists B . begin(w1,B) & B <= I) & rank(w2,I) > rank(w1,I) -> forall V . map.value(res,I,V) <-> map.value(w2,I,V);
+        }
+
     }
     implementation {
         implement make_from_array {
@@ -29,26 +43,51 @@ module my_window(domain,range,none,arr_t) = { # TODO: renaming arr_t to arr caus
                 j := j.next;
             }
         }
+
+        implement zip_max {
+            var b := w1.getBegin;
+            var e:inst_t := w1.getEnd;
+            if (w2.getEnd > w1.getEnd) {
+                e := w2.getEnd;
+            };
+            res := w1;
+            var i:domain := b;
+            while i < e 
+            invariant i <= e
+            invariant b <= i
+            invariant i <= I -> (value(res,I,V) <-> value(w1,I,V))
+            invariant begin(res,b)
+            invariant b <= I & I < i & value(w1,I,V1) & value(w2,I,V2) & rank(V2) > rank(V1) -> (value(res,I,V) <-> value(w2,I,V))
+            invariant b <= I & I < i & value(w1,I,V1) & value(w2,I,V2) & rank(V1) >= rank(V2) -> (value(res,I,V) <-> value(w1,I,V))
+            {
+                if rank(read(w1,i)) < rank(read(w2,i)) {
+                    res := res.set(i, read(w2,i));
+                };
+                i := i.next;
+            }
+        }
     }
 }
 
 # test
 
-# include common
+function rank(S:vote_struct):round_t
+definition rank(S:vote_struct) = rnd(S)
 
-# instance foo : my_window(inst_t,vote_struct,not_a_vote,votemap)
+instance win : my_window(inst_t,vote_struct,not_a_vote,votemap, rank)
 
-# export foo.set
-# export foo.read
-# export foo.trim
-# export foo.empty
-# export foo.getBegin
-# export foo.getEnd
-# export foo.make
-# export foo.make_from_array
+export win.set
+export win.read
+export win.trim
+export win.empty
+export win.getBegin
+export win.getEnd
+export win.make
+export win.make_from_array
+export win.zip_max
 
-# isolate test = foo with arr, slot
+isolate test = win with votemap, inst_t, round_t
 
-# interpret value_t -> strlit
+interpret value_t -> strlit
 
-# extract code = foo, inst_t, not_a_vote_def, votemap, round_t
+extract code = win, inst_t, not_a_vote_def, votemap, round_t
