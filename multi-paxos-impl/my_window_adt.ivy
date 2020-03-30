@@ -2,9 +2,7 @@
 
 include window_adt
 
-include common
-
-module my_window(domain,range,none,arr_t,rank) = { # TODO: renaming arr_t to arr causes mayhem becauase it clashes with arr defined in window_adt.ivy, but this is not detected as a problem by Ivy.
+module my_window(domain,range,none,arr_t,rank,rank_type) = { # TODO: renaming arr_t to arr causes mayhem becauase it clashes with arr defined in window_adt.ivy, but this is not detected as a problem by Ivy.
     instantiate window(domain,range,none)
     action make_from_array(i:domain, a:arr_t) returns (w:this)
     action zip_max(w1:this, w2:this) returns (res:this)
@@ -67,27 +65,30 @@ module my_window(domain,range,none,arr_t,rank) = { # TODO: renaming arr_t to arr
             }
         }
     }
+    isolate window_iso = this with arr_t, domain, rank_type
 }
 
 # test
 
-function rank(S:vote_struct):round_t
-definition rank(S:vote_struct) = rnd(S)
 
-instance win : my_window(inst_t,vote_struct,not_a_vote,votemap, rank)
+# include common
+# function rank(S:vote_struct):round_t
+# definition rank(S:vote_struct) = rnd(S)
 
-export win.set
-export win.read
-export win.trim
-export win.empty
-export win.getBegin
-export win.getEnd
-export win.make
-export win.make_from_array
-export win.zip_max
+# instance win : my_window(inst_t,vote_struct,not_a_vote,votemap, rank)
 
-isolate test = win with votemap, inst_t, round_t
+# export win.set
+# export win.read
+# export win.trim
+# export win.empty
+# export win.getBegin
+# export win.getEnd
+# export win.make
+# export win.make_from_array
+# export win.zip_max
 
-interpret value_t -> strlit
+# isolate test = win with votemap, inst_t, round_t
 
-extract code = win, inst_t, not_a_vote_def, votemap, round_t
+# interpret value_t -> strlit
+
+# extract code = win, inst_t, not_a_vote_def, votemap, round_t

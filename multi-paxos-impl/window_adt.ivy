@@ -419,7 +419,7 @@ module window(domain,range,none) = {
         }
     }
 
-    isolate iso = this with domain
+    #isolate iso = this with domain
 }
 
 # To test our module, with instantiate it with appropriate types and

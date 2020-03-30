@@ -689,7 +689,7 @@ isolate system = {
         }
     }
 
-    isolate iso_model = model with server, control_intf, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_obj, log, no_decision_initialization
+    isolate iso_model = model with server, control_intf, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_obj, log, no_decision_initialization, win
 
     isolate iso_controller = controller with control_intf, inst_t, time, timearray
 
