@@ -44,7 +44,7 @@ module my_window(domain,range,none,arr_t,rank,rank_type) = { # TODO: renaming ar
 
         implement zip_max {
             var b := w1.getBegin;
-            var e:inst_t := w1.getEnd;
+            var e:domain := w1.getEnd;
             if (w2.getEnd > w1.getEnd) {
                 e := w2.getEnd;
             };
@@ -70,25 +70,24 @@ module my_window(domain,range,none,arr_t,rank,rank_type) = { # TODO: renaming ar
 
 # test
 
+# instance slot : unbounded_sequence
+# instance data: unbounded_sequence
 
-# include common
-# function rank(S:vote_struct):round_t
-# definition rank(S:vote_struct) = rnd(S)
+# instance arr : array(slot,data)
 
-# instance win : my_window(inst_t,vote_struct,not_a_vote,votemap, rank)
+# individual rank(D:data):data
+# definition rank(D:data) = D
 
-# export win.set
-# export win.read
-# export win.trim
-# export win.empty
-# export win.getBegin
-# export win.getEnd
-# export win.make
-# export win.make_from_array
-# export win.zip_max
+# instance foo : my_window(slot,data,0,arr,rank,data)
 
-# isolate test = win with votemap, inst_t, round_t
+# export foo.set
+# export foo.read
+# export foo.trim
+# export foo.empty
+# export foo.getBegin
+# export foo.getEnd
+# export foo.make
+# export foo.make_from_array
+# export foo.zip_max
 
-# interpret value_t -> strlit
-
-# extract code = win, inst_t, not_a_vote_def, votemap, round_t
+# extract code = foo, slot, data, arr, this
