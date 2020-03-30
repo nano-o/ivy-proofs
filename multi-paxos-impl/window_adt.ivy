@@ -208,10 +208,14 @@ module window(domain,range,none) = {
 
     action getEnd(w:this) returns (i:domain)
 
+    action make(i:domain, x:this) returns (w:this)
+
+    # copy an array from position i
+
     specification {	
 
         around set {
-            require v ~= none;
+            #require v ~= none;
             require exists I. begin(w, I) & I <= i;
 	          ...
             ensure I = i -> (value(w, I, V) <-> V = v);
@@ -245,6 +249,15 @@ module window(domain,range,none) = {
 
         after getEnd {
             ensure i <= I -> value(w, I, none);
+        }
+
+        around make {
+            require exists I. begin(x, I) & I <= i;
+            ...
+            ensure begin(w,I) <-> I = i;
+            ensure i <= I & value(x, I, V) -> value(w, I, V)
+              proof assume shift.total with T = i, X = I;
+            ensure I < i -> (value(w, I, V) <-> V = none);
         }
 
         # We also specify a few useful properties of the abstract
@@ -368,7 +381,6 @@ module window(domain,range,none) = {
                 w.elems := arr.empty;
                 w.offset := i;
 	          };
-	          bound := shift.b(offset(w),w.elems.end)  # just for a witness
         }
 
         implement empty {
@@ -384,6 +396,27 @@ module window(domain,range,none) = {
             i := shift.b(w.offset,w.elems.end)
         }
 
+        implement make {
+            w.offset := i;
+            var bound := shift.b(offset(x),x.elems.end); #  offset + x.elems.end
+            if i < bound {
+                var j := i;
+                w.elems := arr.create(shift.f(i,bound), x.elems.value(0));
+                while j < bound
+                invariant i <= j & j <= bound
+                invariant w.elems.end = shift.f(i,bound)
+                invariant shift.r(offset(x),bound,x.elems.end)
+                invariant X < j & shift.r(i,X,Y) -> value(x,X,w.elems.value(Y))
+                invariant w.offset = i
+                {
+                    w.elems := w.elems.set(shift.f(i,j),x.elems.value(shift.f(x.offset,j)));
+                    j := j.next;
+                };
+            }
+            else {
+                w.elems := arr.empty;
+	          };
+        }
     }
 
     isolate iso = this with domain
@@ -392,24 +425,26 @@ module window(domain,range,none) = {
 # To test our module, with instantiate it with appropriate types and
 # export its actions to the environment.
 
-# instance slot : unbounded_sequence
-# type data
-# individual none : data
+instance slot : unbounded_sequence
+type data
+individual none : data
 
-# instance foo : window(slot,data,none)
+instance foo : window(slot,data,none)
 
-# export foo.set
-# export foo.read
-# export foo.trim
-# export foo.empty
-# export foo.getBegin
-# export foo.getEnd
+export foo.set
+export foo.read
+export foo.trim
+export foo.empty
+export foo.getBegin
+export foo.getEnd
+export foo.read
+export foo.make
 
-# isolate impl_defs = {
-#     implementation {
-#         interpret data -> int
-#         definition none = 0
-#     }
-# }
+isolate impl_defs = {
+    implementation {
+        interpret data -> int
+        definition none = 0
+    }
+}
 
-# extract code = foo, slot, impl_defs
+extract code = foo, slot, impl_defs
