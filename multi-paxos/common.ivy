@@ -1,0 +1,23 @@
+#lang ivy1.7
+
+include collections
+include nodes
+
+# base types
+instance round : unbounded_sequence
+individual none : round
+instance inst : unbounded_sequence # instances, i.e. positions in the log
+type value
+# no_ops to fill holes in the log
+individual no_op : value
+
+type vote_struct = struct {
+   maxr : round,
+   maxv : value
+}
+
+instance votemap : array(inst, vote_struct)
+
+function maxvote(M:votemap, I:inst) : vote_struct
+
+instance votemap_seg : segment(inst, vote_struct, votemap)

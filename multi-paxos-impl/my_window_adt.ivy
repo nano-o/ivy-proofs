@@ -2,9 +2,9 @@
 
 include window_adt
 
-module my_window(domain,range,none,arr) = {
+module my_window(domain,range,none,arr_t) = { # TODO: renaming arr_t to arr causes mayhem becauase it clashes with arr defined in window_adt.ivy, but this is not detected as a problem by Ivy.
     instantiate window(domain,range,none)
-    action make_from_array(i:domain, a:arr) returns (w:this)
+    action make_from_array(i:domain, a:arr_t) returns (w:this)
     specification {
         around make_from_array {
             require 0 <= i & i < a.end;
@@ -32,31 +32,23 @@ module my_window(domain,range,none,arr) = {
     }
 }
 
+# test
 
-instance slot : unbounded_sequence
-type data
-individual none : data
+# include common
 
-instance arr : array(slot,data)
+# instance foo : my_window(inst_t,vote_struct,not_a_vote,votemap)
 
-instance foo : my_window(slot,data,none,arr)
+# export foo.set
+# export foo.read
+# export foo.trim
+# export foo.empty
+# export foo.getBegin
+# export foo.getEnd
+# export foo.make
+# export foo.make_from_array
 
-export foo.set
-export foo.read
-export foo.trim
-export foo.empty
-export foo.getBegin
-export foo.getEnd
-export foo.make
-export foo.make_from_array
+# isolate test = foo with arr, slot
 
-isolate test = foo with arr, slot
+# interpret value_t -> strlit
 
-isolate impl_defs = {
-    implementation {
-        interpret data -> int
-        definition none = 0
-    }
-}
-
-extract code = foo, slot, impl_defs
+# extract code = foo, inst_t, not_a_vote_def, votemap, round_t

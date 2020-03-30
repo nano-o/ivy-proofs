@@ -2,12 +2,7 @@
 
 # This file contains the specification and proof of a high-level, abstract version of the Multi-Paxos protocol.
 
-include order
-include nodes
-
-instance round_t : unbounded_sequence
-instance inst_t : unbounded_sequence # instances, i.e. positions in the log
-type value_t
+include common
 
 isolate abs_paxos = {
 

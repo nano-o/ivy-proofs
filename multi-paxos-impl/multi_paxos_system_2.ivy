@@ -43,19 +43,6 @@ isolate round_leader = {
     }
 } with round_t
 
-object votemap = {
-    instantiate array(inst_t, vote_struct)
-
-    function val(M:t,I:inst_t):value_t
-    definition val(M,I) = value(M,I).val
-
-    function rnd(M:t,I:inst_t):round_t
-    definition rnd(M,I) = value(M,I).rnd
-
-    function present(M:t,I:inst_t):bool
-    definition present(M,I) = value(M,I).present
-}
-
 # no_ops to fill holes in the log
 individual no_op : value_t
 
@@ -259,6 +246,7 @@ isolate system = {
                 m2.m_kind := msg_kind.one_b;
                 m2.m_round := m.m_round;
                 m2.m_node := self;
+                #m2.m_votes := TODO;
                 var leader:node := m.m_node;
                 call shim.unicast(self,leader,m2);
             };

@@ -4,26 +4,7 @@
 # The network shim just routes the different packet types to their designated handler.
 
 include tcp
-include multi_paxos_protocol
-include window_adt
-
-type vote_struct = struct {
-   rnd : round_t,
-   val: value_t,
-   present : bool 
-}
-
-individual not_a_vote : vote_struct
-trusted isolate not_a_vote_def = {
-     specification {
-         invariant not_a_vote.present = false
-     }
-    implementation { # TODO: dirty hack to prevent Ivy from tryin to find a value for not_a_vote by getting a model (which diverges)
-        definition not_a_vote = <<< (vote_struct){0,"",false} >>>
-    }
-}
-
-instance win : window(inst_t, vote_struct, not_a_vote)
+include common
 
 object msg_kind = {
     type this = {one_a, one_b, two_a, two_b, keep_alive, decide}
@@ -65,8 +46,6 @@ isolate shim = {
     action bcast(src:node,m:msg)
     action unicast(src:node,dst:node,m:msg)
 
-    action notify_round(dst:node, r:round_t) # upcall
-
     specification {
         after init {
             sent(M,D) := false;
@@ -79,10 +58,6 @@ isolate shim = {
         before unicast {
             sent(m,dst) := true;
         }
-
-        before notify_round(dst:node, r:round_t) {
-            assert exists M:msg . sent(M,dst) & M.m_round = r
-        }
     }
 
     implementation {
@@ -91,7 +66,6 @@ isolate shim = {
         action debug_receiving(dst:node,m:msg)
 
         implement net.recv(dst:node,m:msg) {
-            call notify_round(dst, m.m_round);
             
             if m.m_kind = msg_kind.one_a {
                 call one_a_handler.handle(dst,m)
