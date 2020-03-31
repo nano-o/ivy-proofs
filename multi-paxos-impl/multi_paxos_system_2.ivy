@@ -69,7 +69,7 @@ isolate system = {
 
     type decision_struct = struct {
         decision: value_t,
-        present: bool
+        done: bool
     }
     
     instance log : array(inst_t, decision_struct)
@@ -77,9 +77,9 @@ isolate system = {
     individual no_decision : decision_struct
     object no_decision_initialization = {
         after init {
-            no_decision.present := false
+            no_decision.done := false
         }
-        invariant ~no_decision.present
+        invariant ~no_decision.done
     }   
 
     object server(self:node) = {
@@ -113,7 +113,7 @@ isolate system = {
             }
 
             after query {
-                ensure d.present -> decided(i,d.decision)
+                ensure d.done -> decided(i,d.decision)
             }
         }
     }
@@ -184,7 +184,7 @@ isolate system = {
         individual joined: nset # the set of nodes that joined the current round so far
 
         function is_decided(J:inst_t):bool
-        definition is_decided(J:inst_t) = (J < my_log.end & my_log.value(J).present)
+        definition is_decided(J:inst_t) = (J < my_log.end & my_log.value(J).done)
 
         after init {
             current_round := 0;
@@ -205,9 +205,9 @@ isolate system = {
         implement server.query(i:inst_t) {
             if is_decided(i) {
                 d.decision := my_log.value(i).decision;
-                d.present := true;
+                d.done := true;
             }
-            else d.present := false;
+            else d.done := false;
         }
 
 
@@ -246,7 +246,15 @@ isolate system = {
                 m2.m_kind := msg_kind.one_b;
                 m2.m_round := m.m_round;
                 m2.m_node := self;
-                #m2.m_votes := TODO;
+                var i := m.m_inst; # lowest instance requested by the leader
+                m2.m_inst := i;
+
+                if (i < my_votes.end) {
+                    m2.m_votes := win.make_from_array(i, my_votes);
+                }
+                else {
+                    m2.m_votes := win.empty(i);
+                };
                 var leader:node := m.m_node;
                 call shim.unicast(self,leader,m2);
             };
@@ -286,7 +294,7 @@ isolate system = {
         }
 
         implement shim.decide_handler.handle(m:msg) {
-            if (~is_decided(m.m_inst)) {
+            if (~is_decided(m.m_inst) & ~(leader_of(self, current_round))) {
                 if (inst_status.size <= m.m_inst.next) {
                     inst_status := inst_status.resize(m.m_inst.next,init_status);
                 };
@@ -294,7 +302,7 @@ isolate system = {
                     my_log := my_log.resize(m.m_inst.next,no_decision);
                 };
                 var d: decision_struct;
-                d.present := true;
+                d.done := true;
                 d.decision := m.m_value;
                 my_log := my_log.set(m.m_inst,d);
                 
@@ -329,7 +337,7 @@ isolate system = {
                         my_log := my_log.resize(m.m_inst.next,no_decision);
                     };
                     var d: decision_struct;
-                    d.present := true;
+                    d.done := true;
                     d.decision := m.m_value;
                     my_log := my_log.set(m.m_inst,d);
 
@@ -539,14 +547,13 @@ isolate system = {
          invariant ~(I < inst_status.end & nset.member(N,inst_status.value(I).voters) & ~abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal))
 
         # one_a messages
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & model.current_round(msg.m_node(M)) = msg.m_round(M) & ~model.round_active(msg.m_node(M)) & msg.m_inst(M) ~= model.joined_votes(msg.m_node(M)).first)
+        invariant L = msg.m_node(M) & shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a -> leader_of(L, msg.m_round(M)) # TODO: needed?
+        invariant L = msg.m_node(M) & shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & model.current_round(L) = msg.m_round(M) & ~model.round_active(L) -> msg.m_inst(M) = model.first_undecided(L) # TODO: needed?
         
         # one_b messages
-        invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & model.current_round(D) < msg.m_round(M))
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).upper < msg.m_votemap(M).first)
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & model.current_round(D) = msg.m_round(M) & ~model.round_active(D) & msg.m_votemap(M).first ~= model.joined_votes(D).first)
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).first <= I & votemap_seg_ops.maxvote(msg.m_votemap(M),I).rnd = none & R < msg.m_round(M) & abs_paxos.vote(msg.m_node(M), I, R, V))
-        # invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & msg.m_votemap(M).first <= I & MAXR = votemap_seg_ops.maxvote(msg.m_votemap(M),I).rnd & MAXR ~= 0 & (~abs_paxos.vote(msg.m_node(M), I, MAXR, votemap_seg_ops.maxvote(msg.m_votemap(M),I).val) | (R > MAXR & R < msg.m_round(M) & abs_paxos.vote(msg.m_node(M), I, R, V))))
+        invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & model.current_round(D) < msg.m_round(M)) # TODO: needed?
+        invariant shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b -> msg.m_votes(M).begin(msg.m_inst(M)) 
+        invariant shim.sent(M,L) & msg.m_kind(M) = msg_kind.one_b & msg.m_inst(M) <= I & msg.m_votes(M).value(I,S) & present(S) -> (abs_paxos.vote(msg.m_node(M),I,rnd(S),val(S)) & (rnd(S) < R & R < msg.m_round(M) -> ~abs_paxos.vote(msg.m_node(M),I,R,V))) 
 
         # #  the joined_votes and joined data-structures
         # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.upper < joined_votes.first)
@@ -560,7 +567,7 @@ isolate system = {
         
         # decisions:
         invariant server(self).decided(I,V) -> abs_paxos.decision(I,V)
-        invariant ~(I < my_log.end & my_log.value(I).present & ~server(self).decided(I,my_log.value(I).decision))
+        invariant ~(I < my_log.end & my_log.value(I).done & ~server(self).decided(I,my_log.value(I).decision))
         
     }
 
