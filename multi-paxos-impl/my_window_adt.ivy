@@ -65,7 +65,8 @@ module my_window(domain,range,none,arr_t,rank,rank_type) = { # TODO: renaming ar
             }
         }
     }
-    isolate window_iso = this with arr_t, domain, rank_type
+    # TODO: does not work with unpatched Ivy because of issue #57, so made it trusted:
+    trusted isolate window_iso = this with arr_t, domain, rank_type
 }
 
 # test
