@@ -17,10 +17,11 @@ module my_window(domain,range,none,arr_t,rank,rank_type) = { # TODO: renaming ar
         }
 
         around zip_max {
-            require exists I . begin(w1,I) & begin(w2,I)
+            require exists I . begin(w1,I) & begin(w2,I) # only zip windows that begin at the same position
             ...
             ensure value(w1,I,V1) & value(w2,I,V2) & rank(V2) > rank(V1) -> value(res,I,V2);
             ensure value(w1,I,V1) & value(w2,I,V2) & rank(V1) >= rank(V2) -> value(res,I,V1);
+            ensure begin(res,I) <-> begin(w1,I)
             # NOTE: this has a QA cycle:
             # ensure (exists B . begin(w1,B) & B <= I) & rank(w2,I) > rank(w1,I) -> forall V . map.value(res,I,V) <-> map.value(w2,I,V);
         }
@@ -65,7 +66,6 @@ module my_window(domain,range,none,arr_t,rank,rank_type) = { # TODO: renaming ar
             }
         }
     }
-    # TODO: does not work with unpatched Ivy because of issue #57, so made it trusted:
     trusted isolate window_iso = this with arr_t, domain, rank_type
 }
 
