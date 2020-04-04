@@ -264,7 +264,7 @@ isolate system = {
         implement shim.one_b_handler.handle(m:msg) {
             if current_round = m.m_round & ~round_active {
                 joined := joined.add(m.m_node);
-                #joined_votes := joined_votes.zip_max(m.m_votes);
+                joined_votes := joined_votes.zip_max(m.m_votes);
             };
 
             # TODO: activate round
@@ -321,45 +321,37 @@ isolate system = {
         action debug_two_b_handler(a:bool)
         import debug_two_b_handler
         # receiving a vote:
+        
         implement shim.two_b_handler.handle(m:msg) {
-            #if (leader_of(self, current_round) & round_active & m.m_round = current_round) 
-            #if true { # TODO: this makes it fail!
-                
-                # first make sure that inst_status is big enough.
-                if (inst_status.size <= m.m_inst.next) {
-                    inst_status := inst_status.resize(m.m_inst.next,init_status);
-                };
-                
+            if (leader_of(self, current_round) & round_active & m.m_round = current_round & m.m_inst < inst_status.end & ~inst_status.value(m.m_inst).decided & inst_status.value(m.m_inst).active) {
                 var status := inst_status.get(m.m_inst);
-                if status.active & ~status.decided & m.m_round = current_round {
-                    status.voters := status.voters.add(m.m_node);
-                    if status.voters.majority {
-                        call debug_two_b_handler(status.active);
-                        status.decided := true;
-                        
-                        # update local log:
-                        if (my_log.size <= m.m_inst.next) {
-                            my_log := my_log.resize(m.m_inst.next,no_decision);
-                        };
-                        var d: decision_struct;
-                        d.done := true;
-                        d.decision := m.m_value;
-                        my_log := my_log.set(m.m_inst,d);
-
-                        call update_first_undecided(m.m_inst);
-
-                        var m2:msg := build_decide_msg(m.m_inst);
-                        call shim.bcast(self,m2);
-
-                        # assert abs_paxos.proposal(m.m_inst, current_round, m.m_value);
-                        # assert abs_paxos.proposal(m.m_inst, current_round, inst_status.value(m.m_inst).proposal);
-                        # assert m.m_value = inst_status.value(m.m_inst).proposal; TODO: weird...
-                        call abs_paxos.decide(m.m_inst, current_round, status.proposal, status.voters); # ghost
-                        call server(self).decide(m.m_inst, m.m_value);
+                status.voters := status.voters.add(m.m_node);
+                if status.voters.majority {
+                    call debug_two_b_handler(status.active);
+                    status.decided := true;
+                    
+                    # update local log:
+                    if (my_log.size <= m.m_inst.next) {
+                        my_log := my_log.resize(m.m_inst.next,no_decision);
                     };
-                    inst_status := inst_status.set(m.m_inst,status)
+                    var d: decision_struct;
+                    d.done := true;
+                    d.decision := m.m_value;
+                    my_log := my_log.set(m.m_inst,d);
+
+                    call update_first_undecided(m.m_inst);
+
+                    var m2:msg := build_decide_msg(m.m_inst);
+                    call shim.bcast(self,m2);
+
+                    # assert abs_paxos.proposal(m.m_inst, current_round, m.m_value);
+                    # assert abs_paxos.proposal(m.m_inst, current_round, inst_status.value(m.m_inst).proposal);
+                    # assert m.m_value = inst_status.value(m.m_inst).proposal; TODO: weird...
+                    call abs_paxos.decide(m.m_inst, current_round, status.proposal, status.voters); # ghost
+                    call server(self).decide(m.m_inst, m.m_value);
                 };
-            #};
+                inst_status := inst_status.set(m.m_inst,status)
+            }
         }
 
         implement shim.keep_alive_handler.handle(m:msg) {
@@ -377,6 +369,7 @@ isolate system = {
             call change_round(next_self_leader_round(current_round));
             # self joins the current round:
             joined := joined.add(self);
+            joined_votes := win.empty(first_undecided);
 
             # broacast one_a
             var m:msg;
@@ -528,7 +521,7 @@ isolate system = {
         # invariant ~(leader_of(self, R) & abs_paxos.active(R) & R > current_round)
         # invariant ~(leader_of(self, current_round) & round_active & ~abs_paxos.active(current_round))
 
-        # one_as are sent by leaders
+        # one_as are sent by leaders and one_bs to leaders
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & ~leader_of(msg.m_node(M),msg.m_round(M)))
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & ~leader_of(D,msg.m_round(M)))
 
@@ -560,12 +553,13 @@ isolate system = {
         invariant L = msg.m_node(M) & shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & model.current_round(L) = msg.m_round(M) & ~model.round_active(L) -> msg.m_inst(M) = model.first_undecided(L) # TODO: needed?
         
         # one_b messages
-        invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & model.current_round(D) < msg.m_round(M)) # TODO: needed?
+        invariant shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b -> (model.current_round(D) >= msg.m_round(M)) # TODO: needed?
+        invariant shim.sent(M,L) & msg.m_kind(M) = msg_kind.one_b & model.current_round(L) = msg.m_round(M) & ~model.round_active(L) -> msg.m_inst(M) = model.first_undecided(L) 
         invariant shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b -> msg.m_votes(M).begin(msg.m_inst(M)) 
         invariant shim.sent(M,L) & msg.m_kind(M) = msg_kind.one_b & msg.m_inst(M) <= I & msg.m_votes(M).value(I,S) & present(S) -> (abs_paxos.vote(msg.m_node(M),I,rnd(S),val(S)) & (rnd(S) < R & R < msg.m_round(M) -> ~abs_paxos.vote(msg.m_node(M),I,R,V))) 
-        #invariant L = msg.m_node(M) & shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & model.current_round(L) = msg.m_round(M) & ~model.round_active(L) -> msg.m_inst(M) = model.first_undecided(L) 
 
         # the joined_votes and joined data-structures
+        invariant leader_of(self, current_round) & ~round_active -> joined_votes.begin(first_undecided)
         # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.upper < joined_votes.first)
         # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).rnd = none & nset.member(N,joined) & R < current_round & abs_paxos.vote(N,I,R,V))
         # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).rnd ~= none & nset.member(N,joined) & (votemap_seg_ops.maxvote(joined_votes,I).rnd < R & R < current_round & abs_paxos.vote(N,I,R,V)))
