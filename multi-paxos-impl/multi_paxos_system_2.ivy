@@ -369,7 +369,7 @@ isolate system = {
             call change_round(next_self_leader_round(current_round));
             # self joins the current round:
             joined := joined.add(self);
-            joined_votes := win.empty(first_undecided);
+            joined_votes := win.make_from_array(first_undecided, my_votes);
 
             # broacast one_a
             var m:msg;
@@ -433,7 +433,7 @@ isolate system = {
             round_active := false;
             # reset round data for new round.
             inst_status := ballot_status_array.empty;
-            joined := nset.emptyset();
+            #joined := nset.emptyset(); # TODO: ??
         }
         
         action debug_vote(m:msg)
@@ -546,7 +546,7 @@ isolate system = {
 
         # inst_status
         invariant ~(I < inst_status.end & inst_status.value(I).active & ~abs_paxos.proposal(I, current_round, inst_status.value(I).proposal))
-         invariant ~(I < inst_status.end & nset.member(N,inst_status.value(I).voters) & ~abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal))
+        invariant ~(I < inst_status.end & nset.member(N,inst_status.value(I).voters) & ~abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal))
 
         # one_a messages
         invariant L = msg.m_node(M) & shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a -> leader_of(L, msg.m_round(M)) # TODO: needed?
@@ -557,10 +557,13 @@ isolate system = {
         invariant shim.sent(M,L) & msg.m_kind(M) = msg_kind.one_b & model.current_round(L) = msg.m_round(M) & ~model.round_active(L) -> msg.m_inst(M) = model.first_undecided(L) 
         invariant shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b -> msg.m_votes(M).begin(msg.m_inst(M)) 
         invariant shim.sent(M,L) & msg.m_kind(M) = msg_kind.one_b & msg.m_inst(M) <= I & msg.m_votes(M).value(I,S) & present(S) -> (abs_paxos.vote(msg.m_node(M),I,rnd(S),val(S)) & (rnd(S) < R & R < msg.m_round(M) -> ~abs_paxos.vote(msg.m_node(M),I,R,V))) 
+        invariant shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b -> exists V . msg.m_votes(M).value(I,V)
 
         # the joined_votes and joined data-structures
         invariant leader_of(self, current_round) & ~round_active -> joined_votes.begin(first_undecided)
-        # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.upper < joined_votes.first)
+        invariant exists V . joined_votes.value(I,V)
+        invariant leader_of(self, current_round) & ~round_active & first_undecided <= J & joined_votes.value(J,S) & present(S) ->  abs_paxos.proposal(J,rnd(S),val(S))
+        #invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.begin(I) & I <= J & joined_votes.value(J,S) & present(S) & nset.member(N,joined) & rnd(S) < R & R < current_round & abs_paxos.vote(N,J,R,V))
         # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).rnd = none & nset.member(N,joined) & R < current_round & abs_paxos.vote(N,I,R,V))
         # invariant ~(leader_of(self, current_round) & ~round_active & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).rnd ~= none & nset.member(N,joined) & (votemap_seg_ops.maxvote(joined_votes,I).rnd < R & R < current_round & abs_paxos.vote(N,I,R,V)))
         # invariant ~(current_round ~= 0 & leader_of(self, current_round) & joined_votes.first <= I & votemap_seg_ops.maxvote(joined_votes,I).rnd ~= 0 & ~abs_paxos.proposal(I,votemap_seg_ops.maxvote(joined_votes,I).rnd,votemap_seg_ops.maxvote(joined_votes,I).val))
@@ -568,6 +571,7 @@ isolate system = {
 
         # the votes array (which represent the node's own votes)
         invariant I < my_votes.end() & my_votes.present(I) -> (my_votes.rnd(I) <= current_round & abs_paxos.vote(self, I, my_votes.rnd(I), my_votes.val(I)) & (my_votes.rnd(I) < R -> ~abs_paxos.vote(self,I,R,V)))
+        invariant first_undecided <= my_log.end
         
         # decisions:
         invariant server(self).decided(I,V) -> abs_paxos.decision(I,V)
@@ -700,11 +704,11 @@ isolate system = {
         }
     }
 
-    isolate iso_model = model with server, control_intf, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_obj, log, no_decision_initialization, win
+    isolate iso_model = model with system.server, control_intf, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_obj, log, no_decision_initialization, win, defs
 
     isolate iso_controller = controller with control_intf, inst_t, time, timearray
-
 } with system.model, system.controller, shim, abs_paxos, nset
+
 
 export system.server.propose
 export system.server.query
