@@ -10,7 +10,7 @@ instance node : iterable
 
 # node sets
 
-trusted isolate nset = {
+trusted isolate nset = { # can take forever to verify depending on the smt seed (is the fragment checker missing something?)
 
     type this
     alias t = this
