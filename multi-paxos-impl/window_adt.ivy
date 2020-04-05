@@ -297,7 +297,6 @@ module window(domain,range,none) = {
         # of `value` in whatever property we are trying to prove. This saves
         # us some effort compared to fully manual instantation.
 
-        # TODO: this must both compile and verify...
         definition value(w:this,x:domain,v:range) =
              (x < offset(w) & v = none)
              | (exists Y. Y < elems(w).end & shift.r(offset(w),x,Y) & v = elems(w).value(Y))
