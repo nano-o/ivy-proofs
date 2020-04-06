@@ -211,10 +211,9 @@ isolate system = {
             else d.done := false;
         }
 
-
         implement server.propose(v:value_t) returns (ret:bool) {
-            if leader_of(self, current_round) & round_active & current_round = 0 { # TODO
-                call abs_paxos.propose(next_inst, current_round, v, 0); # TODO
+            if leader_of(self, current_round) & round_active {
+                call abs_paxos.propose(next_inst, current_round, v, joined, 0); # maxr is 0 because nobody in joined ever voted
                 var m:msg := build_proposal(next_inst,v);
                 call shim.bcast(self,m);
                 call control_intf(self).notify_two_a(next_inst);
@@ -265,12 +264,14 @@ isolate system = {
             if current_round = m.m_round & ~round_active {
                 joined := joined.add(m.m_node);
                 joined_votes := joined_votes.zip_max(m.m_votes);
-            };
 
-            # TODO: activate round
-            # if joined.majority {
-            #     round_active := true;
-            # }
+                # activate round
+                if joined.majority {
+                    round_active := true;
+                    # TODO: propose no-ops from first_undecided to getEnd (use the controller to do that)
+                    next_inst := joined_votes.getEnd();
+                }
+            }
         }
         
         # receiving a proposal:
@@ -489,6 +490,7 @@ isolate system = {
                 var continue:bool := true;
                 while i <= my_log.end & continue
                 invariant i <= my_log.end
+                invariant first_undecided <= i
                 {
                     if ~is_decided(i) {
                         continue := false;
@@ -496,7 +498,7 @@ isolate system = {
                         i := i.next;
                     }
                 };
-                first_undecided := i
+                first_undecided := i;
             }
         }
 
@@ -572,6 +574,11 @@ isolate system = {
         # decisions:
         invariant server(self).decided(I,V) -> abs_paxos.decision(I,V)
         invariant ~(I < my_log.end & my_log.value(I).done & ~server(self).decided(I,my_log.value(I).decision))
+
+        #  next_inst in normal case
+        invariant leader_of(self, current_round) & round_active & nset.member(N, joined) -> model.current_round(N) >= current_round
+        invariant leader_of(self, current_round) & round_active & current_round ~= 0 -> nset.majority(joined)
+        invariant leader_of(self, current_round) & round_active & next_inst <= I & nset.member(N, joined) & R < current_round -> (~abs_paxos.vote(N,I,R,V) & abs_paxos.left_round(N,R))
         
     }
 
