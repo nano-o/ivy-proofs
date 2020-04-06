@@ -71,7 +71,7 @@ module my_window(domain,range,none,arr_t,geq) = { # TODO: renaming arr_t to arr 
             }
         }
     }
-    isolate window_iso = this with arr_t, domain, elem_t
+    isolate window_iso = this with arr_t, domain
 }
 
 # test
