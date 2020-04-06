@@ -2,7 +2,7 @@
 
 include window_adt
 
-module my_window(domain,range,none,arr_t,rank,present,rank_type) = { # TODO: renaming arr_t to arr causes mayhem becauase it clashes with arr defined in window_adt.ivy, but this is not detected as a problem by Ivy.
+module my_window(domain,range,none,arr_t,geq) = { # TODO: renaming arr_t to arr causes mayhem because it clashes with arr defined in window_adt.ivy, but this is not detected as a problem by Ivy.
     instantiate window(domain,range,none)
     action make_from_array(i:domain, a:arr_t) returns (w:this)
     action zip_max(w1:this, w2:this) returns (res:this)
@@ -21,12 +21,10 @@ module my_window(domain,range,none,arr_t,rank,present,rank_type) = { # TODO: ren
             require exists I . begin(w1,I) & begin(w2,I); # only zip windows that begin at the same position
             require exists V1,V2 . w1.value(I,V1) & w2.value(I,V2) # only work on well-formed windows
             ...
-            ensure value(w1,I,V1) & value(w2,I,V2) & (~present(V2) | rank(V1) >= rank(V2)) -> value(res,I,V1);
-            ensure value(w1,I,V1) & value(w2,I,V2) & present(V2) & (rank(V2) > rank(V1)) -> value(res,I,V2);
+            ensure value(w1,I,V1) & value(w2,I,V2) & geq(V1,V2) -> value(res,I,V1);
+            ensure value(w1,I,V1) & value(w2,I,V2) & ~geq(V1,V2) -> value(res,I,V2);
             ensure begin(res,I) <-> begin(w1,I);
-            ensure exists V . value(res,I,V)
-            # NOTE: this has a QA cycle:
-            # ensure (exists B . begin(w1,B) & B <= I) & rank(w2,I) > rank(w1,I) -> forall V . map.value(res,I,V) <-> map.value(w2,I,V);
+            ensure exists V . value(res,I,V);
         }
 
     }
@@ -62,18 +60,18 @@ module my_window(domain,range,none,arr_t,rank,present,rank_type) = { # TODO: ren
             invariant b <= i
             invariant i <= I -> (value(res,I,V) <-> value(w1,I,V))
             invariant begin(res,b)
-            invariant b <= I & I < i & value(w1,I,V1) & value(w2,I,V2) & present(V2) & rank(V2) > rank(V1) -> (value(res,I,V) <-> value(w2,I,V))
-            invariant b <= I & I < i & value(w1,I,V1) & value(w2,I,V2) & (~present(V2) | rank(V1) >= rank(V2)) -> (value(res,I,V) <-> value(w1,I,V))
+            invariant b <= I & I < i & value(w1,I,V1) & value(w2,I,V2) & ~geq(V1,V2) -> (value(res,I,V) <-> value(w2,I,V))
+            invariant b <= I & I < i & value(w1,I,V1) & value(w2,I,V2) & geq(V1,V2) -> (value(res,I,V) <-> value(w1,I,V))
             invariant exists V . res.value(I,V)
             {
-                if present(read(w2,i)) & rank(read(w1,i)) < rank(read(w2,i)) {
+                if geq(read(w1,i), read(w2,i)) {
                     res := res.set(i, read(w2,i));
                 };
                 i := i.next;
             }
         }
     }
-    isolate window_iso = this with arr_t, domain, rank_type
+    isolate window_iso = this with arr_t, domain, elem_t
 }
 
 # test

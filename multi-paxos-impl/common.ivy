@@ -9,13 +9,10 @@ instance round_t : unbounded_sequence
 instance inst_t : unbounded_sequence # instances, i.e. positions in the log
 type value_t
 
-object vote_struct = {
-    type this
-    function rnd(S:this) : round_t
-    function val(S:this): value_t
-    relation present(S:this)
-    function geq(S1:this, S2:this):bool
-    definition geq(S1:this, S2:this) = ~present(S2) | (present(S1) & rnd(S1) >= rnd(S2))
+type vote_struct = struct {
+    rnd : round_t,
+    val: value_t,
+    present : bool 
 }
 
 individual not_a_vote : vote_struct
@@ -41,7 +38,12 @@ object votemap = {
     definition present(M,I) = value(M,I).present
 }
 
-instance win : my_window(inst_t, vote_struct, not_a_vote, votemap, vote_struct)
+function geq(S1:vote_struct, S2:vote_struct):bool
+object geq_def = {
+    definition geq(S1:vote_struct, S2:vote_struct) = ~present(S2) | (present(S1) & rnd(S1) >= rnd(S2))
+}
+
+instance win : my_window(inst_t, vote_struct, not_a_vote, votemap, geq)
 
 # export win.set
 # export win.read
