@@ -175,7 +175,7 @@ isolate system = {
         
         individual current_round : round_t
         individual next_inst : inst_t # next free consensus instance 
-        individual inst_status : ballot_status_array # votes received in the current round, per instance
+        individual inst_status : ballot_status_array # votes received in the current round, per instance. TODO: make a window, otherwise a lot of space may be waste if a new leader takes over after many instances
         individual my_log : log # the decision log
         individual first_undecided : inst_t # the first "hole" in the log
         # data structures used upon leadership change:
@@ -221,13 +221,14 @@ isolate system = {
                 call vote(self, next_inst, v);
 
                 if (inst_status.end <= next_inst) {
-                    inst_status := inst_status.resize(next_inst.next, init_status);
+                    inst_status := inst_status.resize(next_inst.next, init_status)
                 };
                 var status:ballot_status := inst_status.get(next_inst);
                 status.active := true;
                 status.proposal := v;
+                inst_status := inst_status.set(next_inst, status);
                 
-                next_inst := inst_t.next(next_inst);
+                next_inst := next_inst.next;
                 ret := true;
             }
             else {
@@ -324,34 +325,40 @@ isolate system = {
         # receiving a vote:
         
         implement shim.two_b_handler.handle(m:msg) {
-            if (leader_of(self, current_round) & round_active & m.m_round = current_round & m.m_inst < inst_status.end & ~inst_status.value(m.m_inst).decided & inst_status.value(m.m_inst).active) {
-                var status := inst_status.get(m.m_inst);
-                status.voters := status.voters.add(m.m_node);
-                if status.voters.majority {
-                    call debug_two_b_handler(status.active);
-                    status.decided := true;
-                    
-                    # update local log:
-                    if (my_log.size <= m.m_inst.next) {
-                        my_log := my_log.resize(m.m_inst.next,no_decision);
-                    };
-                    var d: decision_struct;
-                    d.done := true;
-                    d.decision := m.m_value;
-                    my_log := my_log.set(m.m_inst,d);
-
-                    call update_first_undecided(m.m_inst);
-
-                    var m2:msg := build_decide_msg(m.m_inst);
-                    call shim.bcast(self,m2);
-
-                    # assert abs_paxos.proposal(m.m_inst, current_round, m.m_value);
-                    # assert abs_paxos.proposal(m.m_inst, current_round, inst_status.value(m.m_inst).proposal);
-                    # assert m.m_value = inst_status.value(m.m_inst).proposal; TODO: weird...
-                    call abs_paxos.decide(m.m_inst, current_round, status.proposal, status.voters); # ghost
-                    call server(self).decide(m.m_inst, m.m_value);
+            if (leader_of(self, current_round) & round_active & m.m_round = current_round) {
+                if inst_status.end <= m.m_inst { # TODO: should not happen! Get rid of it with an invariant.
+                    inst_status := inst_status.resize(m.m_inst.next, init_status)
                 };
-                inst_status := inst_status.set(m.m_inst,status)
+
+                if (~inst_status.value(m.m_inst).decided & inst_status.value(m.m_inst).active) {
+                    var status := inst_status.get(m.m_inst);
+                    status.voters := status.voters.add(m.m_node);
+                    if status.voters.majority {
+                        call debug_two_b_handler(status.active);
+                        status.decided := true;
+                        
+                        # update local log:
+                        if (my_log.size <= m.m_inst.next) {
+                            my_log := my_log.resize(m.m_inst.next,no_decision);
+                        };
+                        var d: decision_struct;
+                        d.done := true;
+                        d.decision := m.m_value;
+                        my_log := my_log.set(m.m_inst,d);
+
+                        call update_first_undecided(m.m_inst);
+
+                        var m2:msg := build_decide_msg(m.m_inst);
+                        call shim.bcast(self,m2);
+
+                        # assert abs_paxos.proposal(m.m_inst, current_round, m.m_value);
+                        # assert abs_paxos.proposal(m.m_inst, current_round, inst_status.value(m.m_inst).proposal);
+                        # assert m.m_value = inst_status.value(m.m_inst).proposal; TODO: weird...
+                        call abs_paxos.decide(m.m_inst, current_round, status.proposal, status.voters); # ghost
+                        call server(self).decide(m.m_inst, m.m_value);
+                    };
+                    inst_status := inst_status.set(m.m_inst,status)
+                }
             }
         }
 
@@ -359,7 +366,10 @@ isolate system = {
             var r := m.m_round;
             if current_round < r {
                 call change_round(r);
-            };
+            }
+            else {
+                call control_intf.notify_keep_alive(self);
+            }
         }
 
         ################################################################################
@@ -723,7 +733,7 @@ object impl_defs = {
     definition round_leader.leader_fun(r:round_t) = <<< r % `node.size` >>>
 }
 
-extract code(self:node) = nset, node, system, system.server(self), system.model(self), system.controller(self), system.control_intf(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def, win
+extract code(self:node) = nset, node, system, system.server(self), system.model(self), system.controller(self), system.control_intf(self), shim(self), net(self), inst_t, round_t, votemap, round_leader, impl_defs, not_a_vote_def, win, geq_def
 
 # to check: run "ivy_check multi_paxos_system.ivy"
 # to check only the system isolate: run "ivy_check isolate=system multi_paxos_system.ivy"
