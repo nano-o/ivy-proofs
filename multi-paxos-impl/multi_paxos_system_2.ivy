@@ -261,6 +261,8 @@ isolate system = {
             };
         }
 
+        action debug_round_active(r:round_t)
+        import debug_round_active
         implement shim.one_b_handler.handle(m:msg) {
             if current_round = m.m_round & ~round_active {
                 joined := joined.add(m.m_node);
@@ -269,6 +271,7 @@ isolate system = {
                 # activate round
                 if joined.majority {
                     round_active := true;
+                    call debug_round_active(current_round);
                     # TODO: propose no-ops from first_undecided to getEnd (use the controller to do that)
                     next_inst := joined_votes.getEnd();
                 }
@@ -633,7 +636,7 @@ isolate system = {
                 my_time := 0;
                 last_heard_from_leader := 0;
                 last_start_round := 0;
-                timeout := 3;
+                timeout := 3; # timeout on the leader after 3 seconds
             }
 
             implement control_intf.notify_keep_alive {
@@ -648,32 +651,24 @@ isolate system = {
                 current_round := r
             }
             
-            implement start_round_timed_out {
-                res := my_time - last_start_round >= timeout
-            }
             implement is_leader_too_quiet {
                 res := my_time - last_heard_from_leader >= timeout
             }
             
-            # action debug_tick(t:time, b:bool)
-            # import debug_tick
+            action debug_tick(t:time, b:bool)
+            import debug_tick
 
             action tick = {
-                my_time := my_time.next;
-                #call debug_tick(my_time, leader_of(self,current_round));
+                my_time := my_time.next; # update local time
+                call debug_tick(my_time, leader_of(self,current_round));
+
                 if (~leader_of(self,current_round)) {
                     if is_leader_too_quiet {
                         call control_intf(self).start_new_round
                     }
                 }
-                else {
-                    if ~round_active {
-                        if start_round_timed_out {
-                            call control_intf(self).start_new_round
-                        }
-                    } else {
-                        call control_intf(self).send_keep_alive
-                    }
+                else { # self is leader of the current round
+                    call control_intf(self).send_keep_alive
                 }
             }
         }
