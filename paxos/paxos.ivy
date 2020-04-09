@@ -5,6 +5,7 @@
 include order
 include nodes
 include tcp
+include timeout
 
 type value_t
 instance round_t : unbounded_sequence
@@ -194,6 +195,152 @@ isolate network_shim = {
         }
     }
 } with net, node
+
+# Every round has a leader. We represent this with the inverse
+# functional relation `leader_of`. If we use the spec of this
+# isolate, we get just the injectivity property, whereas the
+# impl also gives us totality.
+relation leader_of(N:node, E:round_t)
+isolate round_leader = {
+    action get_leader(r:round_t) returns (n:node) # TODO: needed?
+    action get_next_round(r:round_t, n:node) returns (s:round_t)
+    specification {
+        property [injectivity] leader_of(Y,X) & leader_of(Z,X) -> Y = Z
+        after get_leader {
+            ensure leader_of(n,r)
+        }
+        after get_next_round {
+            ensure r < s & leader_of(n,s)
+        }
+    }
+    implementation {
+        function leader_fun(R:round_t) : node
+        definition leader_of(N,R) = (N = leader_fun(R))
+        implement get_leader(r:round_t) {
+            n := leader_fun(r)
+        }
+        implement get_next_round {
+            var iter := r.next;
+            while ~leader_of(n,iter)
+            invariant r < iter
+            {
+                iter := iter.next
+            };
+            s := iter;
+        }
+    }
+} with round_t
+
+isolate system = {
+
+    type decision_struct = struct {
+        decision: value_t,
+        present: bool
+    }
+    
+    
+    individual no_decision : decision_struct
+    object no_decision_initialization = { # a hack to get around the fact that we don't have struct values in Ivy
+        after init {
+            no_decision.present := false
+        }
+        invariant ~no_decision.present
+    } 
+
+    object server(self:node) = {
+
+        # API for client code:
+        # returns false and does nothing if called on a node where leader_of(self,current_round)=false or current_round is not yet active.
+        action propose(v:value_t) returns (r:bool)
+
+        # called by the client to query the log
+        action query returns (d:decision_struct)
+
+        # called by server to report a decision
+        action decide(v:value_t)
+
+        # the service specification:
+        specification {
+            
+            relation decided(V:value_t)
+
+            after init {
+                decided(V) := false;
+            }
+
+            # agreement:
+            after decide {
+                decided(v) := true;
+                ensure server.decided(N,V) -> V = v;
+            }
+
+            after query {
+                ensure d.present -> decided(d.decision)
+            }
+        }
+    }
+
+    object leader_election_interface(self:node) = {
+        # Calls from controller to model
+        action timed_out_on_leader
+        action send_keep_alive
+
+        # Calls from model to controller
+        action notify_changed_round(r:round_t)
+        action notify_keep_alive
+    }
+
+    instance time : unbounded_sequence
+    # object that starts new rounds when timing out on the leader and sends heartbeat messages when self is a leader.
+    object leader_election(self:node) = {
+
+        
+        individual current_round : round_t
+        individual my_time : time
+        individual last_heard_from_leader : time
+        individual last_start_round : time
+        individual timeout : time
+        
+        after init {
+            my_time := 0;
+            last_heard_from_leader := 0;
+            last_start_round := 0;
+            timeout := 3; # timeout on the leader after 3 seconds
+            current_round := 0
+        }
+
+        implement leader_election_interface.notify_keep_alive {
+            last_heard_from_leader := my_time; 
+        }
+
+        implement leader_election_interface.notify_changed_round(r:round_t) {
+            if (leader_of(self,r)) {
+                last_start_round := my_time
+            };
+            last_heard_from_leader := my_time;
+            current_round := r
+        }
+        
+        action debug_tick(t:time, b:bool)
+        import debug_tick
+
+        action tick = {
+            my_time := my_time.next; # update local time
+            #call debug_tick(my_time, leader_of(self,current_round));
+
+            if (~leader_of(self,current_round)) {
+                if my_time - last_heard_from_leader >= timeout {
+                    call leader_election_interface(self).timed_out_on_leader;
+                    last_heard_from_leader := my_time;
+                }
+            }
+            else { # self is leader of the current round
+                call leader_election_interface(self).send_keep_alive;
+                last_heard_from_leader := my_time;
+            }
+        }
+    }
+}
 
 # # now the more concrete specification:
 # isolate protocol = {
