@@ -43,6 +43,9 @@ isolate shim = {
     instance keep_alive_handler : handler(msg_kind.keep_alive)
     instance decide_handler : handler(msg_kind.decide)
 
+    # an upcall
+    action notify_round(n:node, r:round_t)
+
     action bcast(src:node,m:msg)
     action unicast(src:node,dst:node,m:msg)
 
@@ -66,7 +69,12 @@ isolate shim = {
         action debug_receiving(dst:node,m:msg)
 
         implement net.recv(dst:node,m:msg) {
+
+            if m.m_kind ~= msg_kind.one_a {
+                call notify_round(dst, m.m_round)
+            };
             
+            #call debug_receiving(dst,m);
             if m.m_kind = msg_kind.one_a {
                 call one_a_handler.handle(dst,m)
             }

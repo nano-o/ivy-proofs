@@ -280,10 +280,7 @@ isolate system = {
         
         # receiving a proposal:
         implement shim.two_a_handler.handle(m:msg) {
-            if (current_round <= m.m_round) {
-                if (current_round < m.m_round) {
-                    call change_round(m.m_round);
-                };
+            if (current_round = m.m_round) {
 
                 if (~is_decided(m.m_inst) & ~leader_of(self, current_round)) { # Note here the leader may be receiving its own proposal, but it already voted
                     call vote(m.m_node, m.m_inst, m.m_value);
@@ -366,12 +363,12 @@ isolate system = {
         }
 
         implement shim.keep_alive_handler.handle(m:msg) {
-            var r := m.m_round;
-            if current_round < r {
+            call control_intf.notify_keep_alive(self);
+        }
+
+        implement shim.notify_round(r:round_t) {
+            if (current_round < r) {
                 call change_round(r);
-            }
-            else {
-                call control_intf.notify_keep_alive(self);
             }
         }
 
@@ -660,7 +657,7 @@ isolate system = {
 
             action tick = {
                 my_time := my_time.next; # update local time
-                call debug_tick(my_time, leader_of(self,current_round));
+                #call debug_tick(my_time, leader_of(self,current_round));
 
                 if (~leader_of(self,current_round)) {
                     if is_leader_too_quiet {
