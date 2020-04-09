@@ -31,14 +31,16 @@ isolate abs = {
     
     action propose(r:round_t, q:nset, maxr:round_t, v:value_t) = {
         require ~proposal(r,V);
-        require nset.majority(q);
-        require forall N, R . nset.member(N, q) & R < r -> left_rnd(N,R);
+        if (r ~= 0) { # everything is safe at 0
+            require nset.majority(q);
+            require nset.member(N, q) & R < r -> left_rnd(N,R);
 
-        # find the maximal max_vote in the quorum
-        require ((forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,R,V))) | (
-           (exists N. nset.member(N, q) & maxr < r & vote(N,maxr,v)) &
-           (forall N,R,V. (nset.member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr))
-        );
+            # find the maximal max_vote in the quorum
+            require ((forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,R,V))) | (
+               (exists N. nset.member(N, q) & maxr < r & vote(N,maxr,v)) &
+               (forall N,R,V. (nset.member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr))
+            );
+        };
         proposal(r, v) := true
     }
 
@@ -233,18 +235,19 @@ isolate round_leader = {
 
 isolate system = {
 
-    type decision_struct = struct {
-        decision: value_t,
-        present: bool
+    type decision_s = struct { # struct members causes name clashes, so using the d_ prefix to disambiguate...
+        d_value : value_t,
+        d_present: bool
     }
     
     
-    individual no_decision : decision_struct
+    individual no_decision : decision_s
+
     object no_decision_initialization = { # a hack to get around the fact that we don't have struct values in Ivy
         after init {
-            no_decision.present := false
+            no_decision.d_present := false
         }
-        invariant ~no_decision.present
+        invariant ~no_decision.d_present
     } 
 
     object server(self:node) = {
@@ -254,7 +257,7 @@ isolate system = {
         action propose(v:value_t) returns (r:bool)
 
         # called by the client to query the log
-        action query returns (d:decision_struct)
+        action query returns (d:decision_s)
 
         # called by server to report a decision
         action decide(v:value_t)
@@ -275,10 +278,51 @@ isolate system = {
             }
 
             after query {
-                ensure d.present -> decided(d.decision)
+                ensure d.d_present -> decided(d.d_value)
             }
         }
     }
+
+    type vote_s = struct {
+        v_round : round_t,
+        v_value : value_t,
+        v_present : bool
+    }
+
+    isolate ballot_protocol(self:node) = {
+
+        individual current_round: round_t 
+        individual my_max_vote: vote_s
+        invariant my_max_vote.v_present -> my_max_vote.v_round <= current_round
+        individual decision: decision_s
+
+        individual joined: nset # the set of nodes that joined the current round so far
+        individual max_joined_vote: vote_s
+        individual active_leader: bool
+
+        after init {
+            current_round := 0;
+            my_max_vote.v_present := false;
+            joined := nset.emptyset;
+        }
+
+        ################################################################################
+        # Here, we implement the server side of the client API
+
+        implement server.query {
+            d := decision;
+        }
+
+        implement server.propose(v:value_t) returns (ret:bool) {
+            if leader_of(self, current_round) & active_leader {
+                call abs.propose(current_round, joined, max_joined_vote.v_round, v);
+                ret := true;
+            }
+            else {
+                ret := false;
+            }
+        }
+    } with abs
 
     object leader_election_interface(self:node) = {
         # Calls from controller to model
