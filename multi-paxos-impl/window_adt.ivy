@@ -267,6 +267,7 @@ module window(domain,range,none) = {
         property value(W, I, V1) & value(W, I, V2) -> V1 = V2
         property value(W, I, V) -> 0 <= I
 	      property begin(W, I) & begin(W, I2) -> I = I2
+	      property end(W, I) & end(W, I2) -> I = I2
 	      property end(W, IE) & I >= IE  -> value(W, I, none)
         property begin(W,I) & end(W,J) -> I <= J
     }
