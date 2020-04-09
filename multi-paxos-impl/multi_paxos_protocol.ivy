@@ -43,15 +43,24 @@ isolate abs_paxos = {
             left_round(n,R) := left_round(n,R) | R < r;
         }
         
-        action propose(i:inst_t, r:round_t, v:value_t, q:nset, maxr:round_t) = {
-            require ~proposal(i, r, V);
+        action propose(i:inst_t, r:round_t, v:value_t, q:nset) = {
+            require proposal(i, r, V) -> V = v;
             if (r ~= 0) { # everything is safe at 0
                 require nset.majority(q);
                 require nset.member(N, q) & R < r -> left_round(N,R);
-                require 
-                    (forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,i,R,V))) |
-                    (proposal(I, maxr, v) & (forall N,R,V.  ~(nset.member(N, q) & maxr < R & R < r & vote(N,i,R,V))));
+                require forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,i,R,V));
             };
+            proposal(i, r, v) := true
+        }
+
+        action propose_recovery(i:inst_t, r:round_t, v:value_t, q:nset, maxr:round_t) = {
+            require proposal(i, r, V) -> V = v;
+            require r ~= 0; # just a sanity check, but wouldn't hurt
+            require nset.majority(q);
+            require nset.member(N, q) & R < r -> left_round(N,R);
+            require 
+                (forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,i,R,V))) |
+                (proposal(I, maxr, v) & (forall N,R,V.  ~(nset.member(N, q) & maxr < R & R < r & vote(N,i,R,V))));
             proposal(i, r, v) := true
         }
 
