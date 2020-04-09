@@ -105,6 +105,7 @@ isolate shim = {
         }
         
         implement bcast { # broadcast sends to all nodes, including the sender.
+            # TODO: don't send to self...
             var iter := node.iter.create(0);
             while ~iter.is_end
             invariant net.sent(M,D) -> sent(M,D)
