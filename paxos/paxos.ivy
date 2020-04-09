@@ -1,23 +1,20 @@
 #lang ivy1.7
 
+# TODO: a verified implementation of single-shot Paxos
+
 include order
+include nodes
+include tcp
 
-type node
-type value
-type quorum
-instance round : unbounded_sequence
-
-relation member(N:node, Q:quorum)
-trusted isolate quorum_intersection = {
-    axiom forall Q1, Q2. exists N. member(N, Q1) & member(N, Q2)
-}
+type value_t
+instance round_t : unbounded_sequence
 
 # first, the absract protocol:
 isolate abs = {
-    relation left_rnd(N:node, R:round) 
-    relation proposal(R:round, V:value) 
-    relation vote(N:node, R:round, V:value) 
-    relation decision(N:node, R:round, V:value)
+    relation left_rnd(N:node, R:round_t) 
+    relation proposal(R:round_t, V:value_t) 
+    relation vote(N:node, R:round_t, V:value_t) 
+    relation decision(N:node, R:round_t, V:value_t)
     
     after init {
         left_rnd(N,R) := false;
@@ -26,31 +23,33 @@ isolate abs = {
         decision(N,R,V) := false;
     }
 
-    action join_round(n:node, r:round) = {
+    action join_round(n:node, r:round_t) = {
         require ~left_rnd(n,r);
         left_rnd(n,R) := left_rnd(n,R) | R < r
     }
     
-    action propose(r:round, q:quorum, maxr:round, v:value) = {
+    action propose(r:round_t, q:nset, maxr:round_t, v:value_t) = {
         require ~proposal(r,V);
-        require forall N, R . member(N, q) & R < r -> left_rnd(N,R);
+        require nset.majority(q);
+        require forall N, R . nset.member(N, q) & R < r -> left_rnd(N,R);
 
         # find the maximal max_vote in the quorum
-        require ((forall N,R,V. ~(member(N, q) & R < r & vote(N,R,V))) | (
-           (exists N. member(N, q) & maxr < r & vote(N,maxr,v)) &
-           (forall N,R,V. (member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr))
+        require ((forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,R,V))) | (
+           (exists N. nset.member(N, q) & maxr < r & vote(N,maxr,v)) &
+           (forall N,R,V. (nset.member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr))
         );
         proposal(r, v) := true
     }
 
-    action cast_vote(n:node, v:value, r:round) = {
+    action cast_vote(n:node, v:value_t, r:round_t) = {
         require ~left_rnd(n,r);
         require proposal(r, v);
         vote(n, r, v) := true
     }
 
-    action decide(n:node, r:round, v:value, q:quorum) = {
-        require forall N . member(N, q) -> vote(N, r, v);
+    action decide(n:node, r:round_t, v:value_t, q:nset) = {
+        require nset.majority(q);
+        require forall N . nset.member(N, q) -> vote(N, r, v);
         decision(n, r, v) := true
     }
 
@@ -59,114 +58,233 @@ isolate abs = {
         conjecture [validity] decision(N,R,V) -> proposal(R,V)
     }
 
-    private {
-        # proposals are unique per round
-        conjecture proposal(R,V1) & proposal(R,V2) -> V1 = V2
 
-        # only vote for proposed values
-        conjecture vote(N,R,V) -> proposal(R,V)
+    # proposals are unique per round
+    conjecture proposal(R,V1) & proposal(R,V2) -> V1 = V2
 
+    # only vote for proposed values
+    conjecture vote(N,R,V) -> proposal(R,V)
+
+    private { # we hide those in order to not expose quantifier alternations
         # decisions come from quorums of votes:
-        conjecture forall R, V. (exists N. decision(N,R,V)) -> exists Q. forall N. member(N, Q) -> vote(N,R,V)
+        conjecture (exists N. decision(N,R,V)) -> exists Q. forall N. nset.member(N, Q) -> vote(N,R,V)
 
         # Properties of choosable and proposal
-        conjecture forall R1, R2, V1, V2, Q. R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
-            exists N . member(N,Q) & left_rnd(N,R1) & ~vote(N,R1,V1)
-        
+        conjecture R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
+            exists N . nset.member(N,Q) & left_rnd(N,R1) & ~vote(N,R1,V1)
+    }
+} with round_t, nset.majorities_intersect
+
+# The network shim
+
+object msg_kind = {
+    type this = {one_a, one_b, two_a, two_b, keep_alive, decide}
+}
+
+object msg = {
+    type this = struct {
+        m_kind : msg_kind,
+        m_round : round_t,
+        m_node : node,
+        m_value : value_t
+    }
+}
+
+instance net : simple_tcp(node,msg)
+
+isolate network_shim = {
+
+    module handler(p_kind) = {
+        action handle(dst:node,m:msg)
+        object spec = {
+            before handle {
+                assert sent(m,dst) & m.m_kind = p_kind
+            }
+        }
     }
 
-} with round, quorum_intersection
-
-# now the more concrete specification:
-isolate protocol = {
-
-    # We now introduce explicit one_b messages that contain the maximum round at which the sender voted and the corresponding value.
-
-    # note that round 0 is never "used" because 1b messages with round 0 are rejected and thus no leader can execute phase 2a for round 0.
+    relation sent(M:msg,N:node)
     
-    relation one_a(R:round)
-    relation one_b(N:node, R:round, MAXR:round, MAXV:value) 
-    individual current_round(N:node) : round
-    relation proposal(R:round, V:value) 
-    relation vote(N:node, R:round, V:value) 
-    relation decision(N:node, R:round, V:value)
+    instance one_a_handler : handler(msg_kind.one_a)
+    instance one_b_handler : handler(msg_kind.one_b)
+    instance two_a_handler : handler(msg_kind.two_a)
+    instance two_b_handler : handler(msg_kind.two_b)
+    instance keep_alive_handler : handler(msg_kind.keep_alive)
+    instance decide_handler : handler(msg_kind.decide)
 
-    after init {
-        one_a(R) := false;
-        one_b(N,R,MAXR,V) := false;
-        current_round(N) := 0;
-        proposal(R,V) := false;
-        vote(N,R,V) := false;
-        decision(N,R,V) := false;
-    }
+    # an upcall
+    action notify_round(n:node, r:round_t)
 
-    action send_1a(r:round) = {
-        one_a(r) := true;
-    }
-
-    action send_1b(n:node, r:round, maxr:round, maxv:value) = {
-        assume current_round(n) < r;
-        assume one_a(r);
-        assume ((maxr = 0 & forall R,V. ~(R < r & vote(n,R,V))) |
-           (maxr ~= 0 & (maxr < r & vote(n,maxr,maxv)) &
-           (forall R,V. (R  < r & vote(n,R,V)) -> R <= maxr))
-        );
-        current_round(n) := r;
-        one_b(n,r,maxr,maxv) := true;
-        call abs.join_round(n,r)
-    }
-    
-    action propose(r:round, q:quorum, maxr:round, v:value) = {
-        assume ~proposal(r,V);
-        assume forall N. member(N, q) -> exists MAXR,V. one_b(N,r,MAXR,V);
-
-        # find the maximal vote in the quorum
-        # here, compared to the protocol isolate, the leader uses the contents of the one_b messages instead of the vote relation
-        assume ((forall N. member(N, q) -> exists V . one_b(N,r,0,V)) | (
-           (exists N. member(N, q) & maxr < r & one_b(N,r,maxr,v)) &
-           (forall N,R,V. (member(N, q) & R  < r & one_b(N,r,R,V)) -> R <= maxr))
-        );
-        proposal(r, v) := true;
-        call abs.propose(r, q, maxr, v)
-    }
-
-    action cast_vote(n:node, v:value, r:round) = {
-        assume current_round(n) = r;
-        assume proposal(r, v);
-        vote(n, r, v) := true;
-        call abs.cast_vote(n, v, r)
-    }
-
-    action decide(n:node, r:round, v:value, q:quorum) = {
-        assume forall N . member(N, q) -> vote(N, r, v);
-        decision(n, r, v) := true;
-        call abs.decide(n, r, v, q)
-    }
-
-    export send_1a
-    export send_1b
-    export propose
-    export cast_vote
-    export decide    
+    action bcast(src:node,m:msg)
+    action unicast(src:node,dst:node,m:msg)
 
     specification {
-        # safety property:
-        conjecture [safety] (
-          decision(N1,R1,V1) &
-          decision(N2,R2,V2)
-        ) -> V1 = V2
+        after init {
+            sent(M,D) := false;
+        }
+
+        before bcast {
+            sent(m,D) := true
+        }
+        
+        before unicast {
+            sent(m,dst) := true;
+        }
     }
 
-    private {
-        conjecture current_round(N) = R & R <= R2 -> ~abs.left_rnd(N,R2)
-        conjecture current_round(N) = R & R2 < R -> abs.left_rnd(N,R2)
-        conjecture vote(N,R,V) <-> abs.vote(N,R,V)
-        conjecture decision(N,R,V) <-> abs.decision(N,R,V)
-        conjecture proposal(R,V) <-> abs.proposal(R,V)
-        conjecture one_b(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R
-        conjecture one_b(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
-        conjecture one_b(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
-        conjecture one_b(N,R,MAXR,V) -> MAXR < R
+    implementation {
+
+        action debug_sending(src:node,dst:node,m:msg)
+        action debug_receiving(dst:node,m:msg)
+
+        implement net.recv(dst:node,m:msg) {
+
+            if m.m_kind ~= msg_kind.one_a {
+                call notify_round(dst, m.m_round)
+            };
+            
+            #call debug_receiving(dst,m);
+            if m.m_kind = msg_kind.one_a {
+                call one_a_handler.handle(dst,m)
+            }
+            else if m.m_kind = msg_kind.one_b {
+                call one_b_handler.handle(dst,m)
+            }
+            else if m.m_kind = msg_kind.two_a {
+                call debug_receiving(dst,m);
+                call two_a_handler.handle(dst,m);
+            }
+            else if m.m_kind = msg_kind.two_b {
+                call debug_receiving(dst,m);
+                call two_b_handler.handle(dst,m);
+            }
+            else if m.m_kind = msg_kind.keep_alive {
+                call keep_alive_handler.handle(dst,m)
+            }
+            else if m.m_kind = msg_kind.decide {
+                call decide_handler.handle(dst,m)
+            }
+        }
+
+        action debug_sending_(src:node, dst:node, m:msg)
+        implement debug_sending_(src:node, dst:node, m:msg) {
+            if (m.m_kind ~= msg_kind.keep_alive) {
+                call debug_sending(src,dst,m);
+            };
+        }
+        
+        implement bcast { # broadcast sends to all nodes, including the sender.
+            var iter := node.iter.create(0);
+            while ~iter.is_end
+            invariant net.sent(M,D) -> sent(M,D)
+            {
+                var n := iter.val;
+                call debug_sending_(src,n,m);
+                call net.send(src,n,m);
+                iter := iter.next;
+            }
+        }
+        implement unicast {
+            call debug_sending_(src,dst,m);
+            call net.send(src,dst,m);
+        }
+
+        private {
+            invariant net.sent(M,D) -> sent(M,D)
+        }
     }
+} with net, node
+
+# # now the more concrete specification:
+# isolate protocol = {
+
+#     # We now introduce explicit one_b messages that contain the maximum round at which the sender voted and the corresponding value.
+
+#     # note that round 0 is never "used" because 1b messages with round 0 are rejected and thus no leader can execute phase 2a for round 0.
     
-} with abs, round, quorum_intersection
+#     relation one_a(R:round)
+#     relation one_b(N:node, R:round, MAXR:round, MAXV:value_t) 
+#     individual current_round(N:node) : round
+#     relation proposal(R:round, V:value_t) 
+#     relation vote(N:node, R:round, V:value_t) 
+#     relation decision(N:node, R:round, V:value_t)
+
+#     after init {
+#         one_a(R) := false;
+#         one_b(N,R,MAXR,V) := false;
+#         current_round(N) := 0;
+#         proposal(R,V) := false;
+#         vote(N,R,V) := false;
+#         decision(N,R,V) := false;
+#     }
+
+#     action send_1a(r:round) = {
+#         one_a(r) := true;
+#     }
+
+#     action send_1b(n:node, r:round, maxr:round, maxv:value_t) = {
+#         assume current_round(n) < r;
+#         assume one_a(r);
+#         assume ((maxr = 0 & forall R,V. ~(R < r & vote(n,R,V))) |
+#            (maxr ~= 0 & (maxr < r & vote(n,maxr,maxv)) &
+#            (forall R,V. (R  < r & vote(n,R,V)) -> R <= maxr))
+#         );
+#         current_round(n) := r;
+#         one_b(n,r,maxr,maxv) := true;
+#         call abs.join_round(n,r)
+#     }
+    
+#     action propose(r:round, q:quorum, maxr:round, v:value_t) = {
+#         assume ~proposal(r,V);
+#         assume forall N. member(N, q) -> exists MAXR,V. one_b(N,r,MAXR,V);
+
+#         # find the maximal vote in the quorum
+#         # here, compared to the protocol isolate, the leader uses the contents of the one_b messages instead of the vote relation
+#         assume ((forall N. member(N, q) -> exists V . one_b(N,r,0,V)) | (
+#            (exists N. member(N, q) & maxr < r & one_b(N,r,maxr,v)) &
+#            (forall N,R,V. (member(N, q) & R  < r & one_b(N,r,R,V)) -> R <= maxr))
+#         );
+#         proposal(r, v) := true;
+#         call abs.propose(r, q, maxr, v)
+#     }
+
+#     action cast_vote(n:node, v:value_t, r:round) = {
+#         assume current_round(n) = r;
+#         assume proposal(r, v);
+#         vote(n, r, v) := true;
+#         call abs.cast_vote(n, v, r)
+#     }
+
+#     action decide(n:node, r:round, v:value_t, q:quorum) = {
+#         assume forall N . member(N, q) -> vote(N, r, v);
+#         decision(n, r, v) := true;
+#         call abs.decide(n, r, v, q)
+#     }
+
+#     export send_1a
+#     export send_1b
+#     export propose
+#     export cast_vote
+#     export decide    
+
+#     specification {
+#         # safety property:
+#         conjecture [safety] (
+#           decision(N1,R1,V1) &
+#           decision(N2,R2,V2)
+#         ) -> V1 = V2
+#     }
+
+#     private {
+#         conjecture current_round(N) = R & R <= R2 -> ~abs.left_rnd(N,R2)
+#         conjecture current_round(N) = R & R2 < R -> abs.left_rnd(N,R2)
+#         conjecture vote(N,R,V) <-> abs.vote(N,R,V)
+#         conjecture decision(N,R,V) <-> abs.decision(N,R,V)
+#         conjecture proposal(R,V) <-> abs.proposal(R,V)
+#         conjecture one_b(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R
+#         conjecture one_b(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
+#         conjecture one_b(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
+#         conjecture one_b(N,R,MAXR,V) -> MAXR < R
+#     }
+    
+# } with abs, round, quorum_intersection
