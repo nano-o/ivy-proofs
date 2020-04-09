@@ -124,11 +124,11 @@ isolate system = {
 
         # Calls from controller to model
 
-        # propose an instance that is waiting
+        # propose an instance that is currently waiting
         # action propose_waiting(i : inst_t) 
 
         # propose an instance during recovery
-        # action propose_safe_val(i : inst_t)
+        action propose_highest_or_noop(i : inst_t)
 
         # retransmit two_a message for a pending instance
         action retransmit_two_a(i : inst_t)
@@ -140,7 +140,9 @@ isolate system = {
         action send_keep_alive
 
         # start a new round
-        action start_new_round
+        action timed_out_on_leader
+
+        action activate_round
 
         # Calls from model to controller
 
@@ -148,16 +150,28 @@ isolate system = {
 
         action notify_two_a(i:inst_t)
 
-        action notify_changed_round(r:round_t)
+        action notify_changed_round(r:round_t) # notify leader-election object
 
         action notify_keep_alive
 
+        action notify_leadership_acquired(low:inst_t, high:inst_t)
+
         individual current_round:round_t
+        individual first_undecided:inst_t
+        individual recovery_bound:inst_t
+        relation round_active
 
         specification {
 
             after init {
                 current_round := 0;
+                first_undecided := 0;
+                round_active := leader_of(self,0);
+            }
+            before propose_highest_or_noop {
+                assert leader_of(self, current_round);
+                assert ~round_active;
+                assert first_undecided <= i & i < recovery_bound;
             }
             before send_keep_alive {
                 assert leader_of(self, current_round)
@@ -168,6 +182,15 @@ isolate system = {
             before retransmit_two_a {
                 assert leader_of(self, current_round)
             } 
+            before notify_leadership_acquired {
+                assert leader_of(self, current_round) & ~round_active;
+                assert low <= high;
+                first_undecided := low;
+                recovery_bound := high;
+            }
+            before activate_round {
+                assert leader_of(self, current_round) & ~round_active;
+            }
         }
     }
 
@@ -213,21 +236,8 @@ isolate system = {
 
         implement server.propose(v:value_t) returns (ret:bool) {
             if leader_of(self, current_round) & round_active {
-                call abs_paxos.propose(next_inst, current_round, v, joined, 0); # maxr is 0 because nobody in joined ever voted
-                var m:msg := build_proposal(next_inst,v);
-                call shim.bcast(self,m);
-                call control_intf(self).notify_two_a(next_inst);
-                
-                call vote(self, next_inst, v);
-
-                if (inst_status.end <= next_inst) {
-                    inst_status := inst_status.resize(next_inst.next, init_status)
-                };
-                var status:ballot_status := inst_status.get(next_inst);
-                status.active := true;
-                status.proposal := v;
-                inst_status := inst_status.set(next_inst, status);
-                
+                call abs_paxos.propose(next_inst, current_round, v, joined);
+                call do_propose(next_inst, v);
                 next_inst := next_inst.next;
                 ret := true;
             }
@@ -235,7 +245,6 @@ isolate system = {
                 ret := false;
             }
         }
-
 
         ################################################################################
         # Here, we implement the handler side of the network interface
@@ -367,7 +376,7 @@ isolate system = {
         }
 
         implement shim.notify_round(r:round_t) {
-            if (current_round < r) {
+            if (current_round < r & ~leader_of(self, r)) { # second condition should not happen. TODO: eliminate with invariant
                 call change_round(r);
             }
         }
@@ -375,8 +384,13 @@ isolate system = {
         ################################################################################
         # Here we implement the model side of the controller/model interface
 
+        implement control_intf.activate_round {
+            round_active := true;
+            next_inst := joined_votes.getEnd();
+        }
+
         # called when timing out on the current leader:
-        implement control_intf.start_new_round {
+        implement control_intf.timed_out_on_leader {
             call change_round(next_self_leader_round(current_round));
             # self joins the current round:
             joined := nset.emptyset();
@@ -413,8 +427,37 @@ isolate system = {
             call shim.bcast(self,m);
         }
 
+        implement control_intf.propose_highest_or_noop(i:inst_t) {
+            assert leader_of(self, current_round) & ~round_active & first_undecided <= i;
+            var highest := joined_votes.read(i);
+            if highest.present {
+                call abs_paxos.propose_recovery(i, current_round, highest.val, joined, highest.rnd);
+                call do_propose(i, highest.val);
+            }
+            else {
+                call abs_paxos.propose(i, current_round, no_op, joined);
+                call do_propose(i, no_op);
+            };
+        }
+
         ################################################################################
         # Here we have internal actions
+
+        action do_propose(i:inst_t, v:value_t) = {
+            var m:msg := build_proposal(i,v);
+            call shim.bcast(self,m);
+            call control_intf(self).notify_two_a(i);
+            
+            call vote(self, i, v);
+
+            if (inst_status.end <= i) {
+                inst_status := inst_status.resize(i.next, init_status)
+            };
+            var status:ballot_status := inst_status.get(i);
+            status.active := true;
+            status.proposal := v;
+            inst_status := inst_status.set(i, status);
+        }
 
 
         action build_proposal(j:inst_t, v:value_t) returns (m:msg) = {
@@ -449,7 +492,7 @@ isolate system = {
         
         action debug_vote(m:msg)
         import debug_vote
-        action vote(leader:node, i:inst_t, v:value_t) = { # TODO: why update inst_status? If only the leader tracks other's vote, there's no need
+        action vote(leader:node, i:inst_t, v:value_t) = { # TODO: why update inst_status? If only the leader tracks other's votes, there's no need
             # resize if needed:
             if my_votes.end <= i {
                 my_votes := my_votes.resize(i.next, not_a_vote)
@@ -598,15 +641,22 @@ isolate system = {
 
     object controller(self:node) = {
 
-        individual round_active:bool
+        relation round_active
         individual current_round:round_t
+        individual first_undecided:inst_t
+        individual recovery_bound:inst_t
 
         invariant current_round = control_intf(self).current_round
 
         after init {
             current_round := 0;
             round_active := leader_of(self, 0);
+            first_undecided := 0;
         }
+
+        #implement notify_leadership_acquired(low:inst_t, high:inst_t) {
+        #    
+        #}
 
         object timer = {
             # timeout_sec is a standard module that calls timeout every second:
@@ -661,11 +711,13 @@ isolate system = {
 
                 if (~leader_of(self,current_round)) {
                     if is_leader_too_quiet {
-                        call control_intf(self).start_new_round
+                        call control_intf(self).timed_out_on_leader;
+                        last_heard_from_leader := my_time;
                     }
                 }
                 else { # self is leader of the current round
-                    call control_intf(self).send_keep_alive
+                    call control_intf(self).send_keep_alive;
+                    last_heard_from_leader := my_time;
                 }
             }
         }
