@@ -146,7 +146,7 @@ isolate system = {
 
         # Calls from model to controller
 
-        action notify_decision(i:inst_t)
+        action notify_decision(i:inst_t) # TODO: unused
 
         action notify_two_a(i:inst_t)
 
@@ -208,7 +208,9 @@ isolate system = {
             }
             before activate_round {
                 assert leader_of(self, current_round);
+                assert leadership_acquired;
                 assert ~active_leader;
+                assert next_inst = repropose_bound;
                 active_leader := true;
             }
             before notify_first_undecided {
@@ -294,12 +296,14 @@ isolate system = {
             };
         }
 
+        import action debug_acquired(r:round_t)
         implement shim.one_b_handler.handle(m:msg) {
             if current_round = m.m_round & ~leadership_acquired {
                 joined := joined.add(m.m_node);
                 joined_votes := joined_votes.zip_max(m.m_votes);
 
                 if joined.majority {
+                    call debug_acquired(current_round);
                     leadership_acquired := true;
                     next_inst := first_undecided;
                     # notify the controller
@@ -346,15 +350,23 @@ isolate system = {
                     inst_status := inst_status.resize(m.m_inst.next, init_status)
                 };
 
-                if (~inst_status.value(m.m_inst).decided & inst_status.value(m.m_inst).active) {
-                    var status := inst_status.get(m.m_inst);
+                var status := inst_status.get(m.m_inst);
+                if (~status.decided & status.active) {
                     status.voters := status.voters.add(m.m_node);
                     inst_status := inst_status.set(m.m_inst,status);
+                    # TODO: passes here:
+                    #assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
                     if status.voters.majority {
+                        # TODO: but fails here! (if uncommenting the assert above):
+                        assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
                         call do_decide(m.m_inst, m.m_value);
+                        assert m.m_inst < inst_status.end;
+                        assert status.voters = inst_status.value(m.m_inst).voters;
+                        assert status.proposal = inst_status.value(m.m_inst).proposal;
+                        assert nset.member(N,status.voters) -> abs_paxos.vote(N,m.m_inst,current_round,status.proposal);
+                        call abs_paxos.decide(m.m_inst, current_round, status.proposal, status.voters); # ghost
                         var m2:msg := build_decide_msg(m.m_inst);
                         call shim.bcast(self,m2);
-                        call abs_paxos.decide(m.m_inst, current_round, status.proposal, status.voters); # ghost
                     };
                     inst_status := inst_status.set(m.m_inst,status)
                 }
@@ -411,7 +423,7 @@ isolate system = {
         }
 
         implement control_intf.retransmit_two_a(i:inst_t) {
-            if i < inst_status.end & inst_status.value(i).active & ~inst_status.value(i).decided {
+            if i < inst_status.end & inst_status.value(i).active & ~inst_status.value(i).decided { # TODO: this should be implied by an invariant
                 var m:msg;
                 m.m_kind := msg_kind.two_a;
                 m.m_node := self;
@@ -448,7 +460,7 @@ isolate system = {
         implement control_intf.activate_round {
             call debug_active_leader(current_round);
             active_leader := true;
-            next_inst := joined_votes.getEnd();
+            #next_inst := joined_votes.getEnd();
         }
 
         ################################################################################
@@ -557,11 +569,6 @@ isolate system = {
         # round of a message:
         invariant ~(shim.sent(M,D) & (msg.m_kind(M) = msg_kind.one_a | msg.m_kind(M) = msg_kind.two_a | msg.m_kind(M) = msg_kind.one_b | msg.m_kind(M) = msg_kind.two_b) & msg.m_round(M) > model.current_round(msg.m_node(M)))
         
-        # current_round and active:
-        # invariant leader_of(self, current_round) -> (active_leader <-> abs_paxos.active(current_round))
-        # invariant ~(leader_of(self, R) & abs_paxos.active(R) & R > current_round)
-        # invariant ~(leader_of(self, current_round) & active_leader & ~abs_paxos.active(current_round))
-
         # one_as are sent by leaders and one_bs to leaders
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & ~leader_of(msg.m_node(M),msg.m_round(M)))
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & ~leader_of(D,msg.m_round(M)))
@@ -588,8 +595,8 @@ isolate system = {
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.two_b & ~abs_paxos.vote(msg.m_node(M), msg.m_inst(M), msg.m_round(M), msg.m_value(M)))
 
         # inst_status
-        invariant ~(I < inst_status.end & inst_status.value(I).active & ~abs_paxos.proposal(I, current_round, inst_status.value(I).proposal))
-        invariant ~(I < inst_status.end & nset.member(N,inst_status.value(I).voters) & ~abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal))
+        invariant I < inst_status.end & inst_status.value(I).active -> abs_paxos.proposal(I, current_round, inst_status.value(I).proposal)
+        invariant I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal)
 
         # one_a messages
         invariant L = msg.m_node(M) & shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a -> leader_of(L, msg.m_round(M)) # TODO: needed?
@@ -624,7 +631,7 @@ isolate system = {
         invariant control_intf(self).leadership_acquired <-> leadership_acquired
         invariant (leadership_acquired | active_leader) -> leader_of(self, current_round)
         invariant leadership_acquired & current_round ~= 0 -> (joined_votes.end(I) <-> I = control_intf(self).repropose_bound)
-        invariant leadership_acquired -> next_inst = control_intf(self).next_inst
+        invariant leadership_acquired & ~active_leader -> next_inst = control_intf(self).next_inst
         
         # the votes array (which represent the node's own votes)
         invariant I < my_votes.end() & my_votes.present(I) -> (my_votes.rnd(I) <= current_round & abs_paxos.vote(self, I, my_votes.rnd(I), my_votes.val(I)) & (my_votes.rnd(I) < R -> ~abs_paxos.vote(self,I,R,V)))
@@ -679,7 +686,8 @@ isolate system = {
                     call control_intf.propose_highest_or_noop(self, i);
                     i := i.next
                 }
-            }
+            };
+            call control_intf(self).activate_round;
         }
 
         object timer = {
@@ -743,13 +751,12 @@ isolate system = {
             individual two_a_times:timearray
             individual current_time:time
             individual last_started:inst_t
-            individual first_undecided:inst_t
+            invariant first_undecided <= last_started
 
             after init {
                 current_time := 0;
                 two_a_times := timearray.empty;
                 last_started := 0;
-                first_undecided := 0;
             }
             
             implement control_intf.notify_two_a(i:inst_t) {
@@ -761,12 +768,16 @@ isolate system = {
                 };
                 two_a_times := two_a_times.set(i,current_time)
             }
+
+            # implement control_intf.notify_decision(i:inst_t) {
+            # }
             
             action tick = {
                 if (leader_of(self, current_round) & active_leader) {
-                    var i:inst_t := 0; # TODO: should be first_undecided;
-                    while (i < last_started)
-                    invariant i <= last_started
+                    var i:inst_t := first_undecided;
+                    var bound:inst_t := last_started.next;
+                    while (i < bound)
+                    invariant i <= bound
                     {
                         call control_intf(self).retransmit_two_a(i);
                         i := i.next;
@@ -778,8 +789,10 @@ isolate system = {
     }
 
     isolate iso_model = model with system.server, control_intf, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_obj, log, no_decision_initialization, win, geq_def 
-
     isolate iso_controller = controller with control_intf, inst_t, time, timearray
+    #isolate iso_control_intf = control_intf
+    #isolate iso_server = control_intf
+    
 } with system.model, system.controller, shim, abs_paxos, nset
 
 
