@@ -47,7 +47,7 @@ isolate round_leader = {
 individual no_op : value_t
 
 # Multi-Paxos implementation
-isolate system = {
+object system = {
     
     type ballot_status = struct {
         active : bool,
@@ -86,13 +86,13 @@ isolate system = {
 
         # API for client code:
         # returns false and does nothing if called on a node where leader_of(self,current_round)=false or current_round is not yet active.
-        action propose(v:value_t) returns (r:bool)
+        export action propose(v:value_t) returns (r:bool)
 
         # called by the client to query the log
         export action query(i:inst_t) returns (d:decision_struct)
 
         # called by server to report a decision
-        export action decide(i:inst_t,v:value_t)
+        import action decide(i:inst_t,v:value_t)
 
         # the service specification:
         # do not change; the key-value store shim depends on this interface
@@ -102,10 +102,8 @@ isolate system = {
 
             invariant decided(I,V) -> abs_paxos.decision(I,V)
 
-            object spec_init = { #TODO: why an object for this?
-                after init {
-                    decided(I,V) := false;
-                }
+            after init {
+                decided(I,V) := false;
             }
 
             # agreement:
@@ -162,7 +160,7 @@ isolate system = {
 
         action notify_first_undecided(i:inst_t) # TODO: could be merged with notify_decision
 
-        # Specification variables to maintain mutual invariants between model and controller:
+        # Specification variables to maintain mutual invariants between model and controller implementations (we need specification variables somewhere to link the two implementations... but this is a lot of duplication):
         individual current_round:round_t
         individual first_undecided:inst_t
         individual repropose_bound:inst_t
@@ -172,9 +170,7 @@ isolate system = {
 
         specification {
 
-            # TODO: why use leader_of here? Those invariants are maintained by the model
-            invariant leadership_acquired -> leader_of(self, current_round)
-            invariant leader_ready -> leader_of(self, current_round) & leadership_acquired
+            invariant leader_ready -> leadership_acquired
 
             after init {
                 current_round := 0;
@@ -184,13 +180,7 @@ isolate system = {
                 next_inst := 0;
             }
             before propose_highest_or_noop(i:inst_t) {
-                # TODO: reformat
-                assert leader_of(self, current_round);
-                assert leadership_acquired;
-                assert ~leader_ready;
-                assert first_undecided <= i;
-                assert i < repropose_bound;
-                assert i = next_inst;
+                assert leader_of(self, current_round) & leadership_acquired & ~leader_ready & first_undecided <= i & i < repropose_bound & i = next_inst;
                 next_inst := next_inst.next
             }
             before notify_two_a {
@@ -217,10 +207,7 @@ isolate system = {
                 repropose_bound := end;
             }
             before activate_round {
-                assert leader_of(self, current_round);
-                assert leadership_acquired;
-                assert ~leader_ready;
-                assert next_inst = repropose_bound;
+                assert leader_of(self, current_round) & leadership_acquired & ~leader_ready & next_inst = repropose_bound;
                 leader_ready := true;
             }
             before notify_first_undecided {
@@ -366,9 +353,10 @@ isolate system = {
                 if (~status.decided & status.active) {
                     status.voters := status.voters.add(m.m_node);
                     inst_status := inst_status.set(m.m_inst,status);
+                    # TODO: without this assert, something weird happens:
                     assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
                     if status.voters.majority {
-                        assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
+                        #assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
                         #call debug_two_b_handler(true);
                         call abs_paxos.decide(m.m_inst, current_round, status.proposal, status.voters); # ghost
                         call do_decide(m.m_inst, m.m_value); # TODO: why does this randomly fails?
@@ -471,7 +459,7 @@ isolate system = {
             next_inst := i.next;
         }
 
-        action do_decide(i:inst_t, v:value_t) = { # TODO: move to internal actions section
+        action do_decide(i:inst_t, v:value_t) = {
             if (my_log.size <= i.next) {
                 my_log := my_log.resize(i.next,no_decision);
             };
@@ -509,7 +497,7 @@ isolate system = {
         }
         
         import action debug_vote(m:msg)
-        action vote(leader:node, i:inst_t, v:value_t) = { # TODO: why update inst_status? If only the leader tracks other's votes, there's no need
+        action vote(leader:node, i:inst_t, v:value_t) = { 
             # resize if needed:
             if my_votes.end <= i {
                 my_votes := my_votes.resize(i.next, not_a_vote)
@@ -644,7 +632,8 @@ isolate system = {
         invariant first_undecided <= my_log.end
         
         # decisions:
-        invariant ~(I < my_log.end & my_log.value(I).done & ~abs_paxos.decision(I, my_log.value(I).decision))
+        invariant I < my_log.end & my_log.value(I).done -> abs_paxos.decision(I, my_log.value(I).decision)
+        invariant I < my_log.end & my_log.value(I).done -> server(self).decided(I, my_log.value(I).decision)
 
         #  next_inst in normal case
         invariant leader_of(self, current_round) & leader_ready & nset.member(N, joined) -> model.current_round(N) >= current_round
@@ -795,17 +784,16 @@ isolate system = {
         }
     }
 
-    isolate iso_model = model with control_intf, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_initialization, log, no_decision_initialization, win, geq_def 
+    isolate iso_model = model with system.server, control_intf, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_initialization, log, no_decision_initialization, win, geq_def 
     isolate iso_controller = controller with control_intf, inst_t, time, timearray
     isolate iso_control_intf = control_intf
     isolate iso_server = server with abs_paxos.agreement
     
-} with system.model, system.controller, shim, abs_paxos, nset
-
+} #with system.model, system.controller, shim, abs_paxos, nset
 
 #export system.server.propose
 #export system.server.query
-import system.server.decide
+#import system.server.decide
 
 isolate impl_defs = {
     interpret value_t -> strlit
