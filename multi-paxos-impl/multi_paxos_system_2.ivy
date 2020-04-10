@@ -58,14 +58,14 @@ isolate system = {
     instance ballot_status_array : array(inst_t, ballot_status)
     individual init_status : ballot_status
     # default status for initialization
-    object status_obj = {
+    isolate status_initialization = {
         invariant ~init_status.decided & ~nset.member(N,init_status.voters) & ~init_status.active
         after init {
             init_status.active := false;
             init_status.decided := false;
             init_status.voters := nset.emptyset();
         }
-    }
+    } with nset
 
     type decision_struct = struct {
         decision: value_t,
@@ -75,7 +75,7 @@ isolate system = {
     instance log : array(inst_t, decision_struct)
     
     individual no_decision : decision_struct
-    object no_decision_initialization = {
+    isolate no_decision_initialization = {
         after init {
             no_decision.done := false
         }
@@ -186,6 +186,10 @@ isolate system = {
                 assert i < repropose_bound;
                 assert i = next_inst;
                 next_inst := next_inst.next
+            }
+            before notify_two_a {
+                # TODO: needed?
+                # assert first_undecided <= i
             }
             before send_keep_alive {
                 assert leader_of(self, current_round)
@@ -345,6 +349,8 @@ isolate system = {
         # receiving a vote:
         
         implement shim.two_b_handler.handle(m:msg) {
+            # checking that the if condition is not a tautology:
+            # assert leader_of(self, current_round) & active_leader & m.m_round = current_round;
             if (leader_of(self, current_round) & active_leader & m.m_round = current_round) {
                 if inst_status.end <= m.m_inst { # TODO: should not happen! Get rid of it with an invariant.
                     inst_status := inst_status.resize(m.m_inst.next, init_status)
@@ -355,16 +361,16 @@ isolate system = {
                     status.voters := status.voters.add(m.m_node);
                     inst_status := inst_status.set(m.m_inst,status);
                     # TODO: passes here:
-                    #assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
+                    assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
                     if status.voters.majority {
                         # TODO: but fails here! (if uncommenting the assert above):
                         assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
-                        call do_decide(m.m_inst, m.m_value);
-                        assert m.m_inst < inst_status.end;
-                        assert status.voters = inst_status.value(m.m_inst).voters;
-                        assert status.proposal = inst_status.value(m.m_inst).proposal;
-                        assert nset.member(N,status.voters) -> abs_paxos.vote(N,m.m_inst,current_round,status.proposal);
+                        # assert m.m_inst < inst_status.end;
+                        # assert status.voters = inst_status.value(m.m_inst).voters;
+                        # assert status.proposal = inst_status.value(m.m_inst).proposal;
+                        # assert nset.member(N,status.voters) -> abs_paxos.vote(N,m.m_inst,current_round,status.proposal);
                         call abs_paxos.decide(m.m_inst, current_round, status.proposal, status.voters); # ghost
+                        call do_decide(m.m_inst, m.m_value); # TODO: why does this fail if it's before the ghost call?
                         var m2:msg := build_decide_msg(m.m_inst);
                         call shim.bcast(self,m2);
                     };
@@ -751,7 +757,8 @@ isolate system = {
             individual two_a_times:timearray
             individual current_time:time
             individual last_started:inst_t
-            invariant first_undecided <= last_started
+            # TODO:
+            #invariant first_undecided <= last_started
 
             after init {
                 current_time := 0;
@@ -776,11 +783,13 @@ isolate system = {
                 if (leader_of(self, current_round) & active_leader) {
                     var i:inst_t := first_undecided;
                     var bound:inst_t := last_started.next;
-                    while (i < bound)
-                    invariant i <= bound
-                    {
-                        call control_intf(self).retransmit_two_a(i);
-                        i := i.next;
+                    if (i < bound) { # TODO: eliminate this with invariant above
+                        while (i < bound)
+                        invariant i <= bound
+                        {
+                            call control_intf(self).retransmit_two_a(i);
+                            i := i.next;
+                        };
                     };
                 };
                 current_time := current_time.next
@@ -788,10 +797,9 @@ isolate system = {
         }
     }
 
-    isolate iso_model = model with system.server, control_intf, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_obj, log, no_decision_initialization, win, geq_def 
+    isolate iso_model = model with system.server, control_intf, nset, votemap, abs_paxos, round_leader, round_t, shim, inst_t, not_a_vote_def, ballot_status_array, status_initialization, log, no_decision_initialization, win, geq_def 
     isolate iso_controller = controller with control_intf, inst_t, time, timearray
-    #isolate iso_control_intf = control_intf
-    #isolate iso_server = control_intf
+    isolate iso_control_intf = control_intf
     
 } with system.model, system.controller, shim, abs_paxos, nset
 
@@ -800,7 +808,7 @@ export system.server.propose
 export system.server.query
 import system.server.decide
 
-object impl_defs = {
+isolate impl_defs = {
     interpret value_t -> strlit
     definition no_op = "" 
     definition round_leader.leader_fun(r:round_t) = <<< r % `node.size` >>>
