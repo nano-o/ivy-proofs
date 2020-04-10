@@ -1,0 +1,202 @@
+#lang ivy1.7
+
+# Fast Byzantine Paxos axiomatizating byzantine quorums without reference to crash-stop quorums.
+# We have >3F+2Q+1 nodes, with Q<=F, among which at most F are byzantine.
+# The fast path succeeds if it experiences less than Q byzantine faults and all other nodes communicate and propose the same value
+# The slow path succeeds if experiencing less than F byzantine faults under a correct leader that can reach a quorum.
+
+module total_order(r) = {
+    axiom r(X,X)                        # Reflexivity
+    axiom r(X, Y) & r(Y, Z) -> r(X, Z)  # Transitivity
+    axiom r(X, Y) & r(Y, X) -> X = Y    # Anti-symmetry
+    axiom r(X, Y) | r(Y, X)             # Totality
+}
+
+type node
+type value
+type round
+
+individual none: round
+relation le(X:round, Y:round)
+instantiate total_order(le)
+
+relation is_good(N:node)
+
+## start quorum axiomatization
+
+type byz_quorum # >=2F+2Q+1
+relation byz_member(N:node,Q:byz_quorum)
+axiom exists N . is_good(N) & byz_member(N, Q1) & byz_member(N, Q2)
+
+type byz_fast_quorum # >=3F+Q+1
+relation byz_fast_member(N:node,Q:byz_fast_quorum)
+axiom exists N . is_good(N) & byz_member(N, Q) & byz_fast_member(N, Q1) & byz_fast_member(N,Q2)
+
+type byz_inter_quorum # >=F+Q+1
+relation byz_inter_member(N:node, Q:byz_inter_quorum)
+axiom exists BIQ . (forall N . byz_inter_member(N, BIQ) <-> (is_good(N) & byz_member(N,Q) & byz_fast_member(N,FQ)))
+axiom (forall N . byz_inter_member(N, BIQ) -> byz_member(N,Q)) -> exists N . is_good(N) & byz_fast_member(N, FQ) & byz_inter_member(N,BIQ)
+
+## end quorum axiomatization
+
+individual is_fast(R:round):bool
+
+relation one_a(R:round)
+relation one_b(N:node, R:round) 
+relation left_rnd(N:node, R:round)
+relation proposal(N:node, R:round, V:value)
+relation vote(N:node, R:round, V:value)
+relation decision(N:node, R:round, V:value)
+relation any(N:node, R:round)
+
+after init {
+    one_a(R) := false;
+    one_b(N,R) := false;
+    left_rnd(N,R) := false;
+    proposal(N,R,V) := false;
+    vote(N,R,V) := false;
+    decision(N,R,V) := false;
+    any(N,R) := false;
+}
+
+action send_1a = {
+    # a proposer selects a round and sends a message asking nodes to join the round
+    local r:round {
+        require r ~= none;
+        one_a(r) := true
+    }
+}
+
+action join_round = {
+    # receive 1a and answer with 1b
+    local n:node, r:round {
+        require r ~= none;
+        require one_a(r);
+        require ~left_rnd(n,r);
+
+        one_b(n,r) := true;
+        left_rnd(n,R) := left_rnd(n,R) | ~le(r,R)
+    }
+}
+
+action propose = {
+    local n:node, r:round, q:byz_quorum {
+        require r ~= none;
+        require ~proposal(n,r,V);
+	require ~any(n,r);
+        require forall N:node. byz_member(N, q) -> one_b(N,r);
+
+        local maxr:round, v:value {
+	    if forall N, MAXR, V . ~(byz_member(N, q) & ~le(r,MAXR) & vote(N,MAXR,V)) { # no votes reported
+		if is_fast(r) {
+		    any(n,r) := true }
+		else {
+		    proposal(n,r,v) := true }
+	    }
+	    else {
+	        # no vote reported between maxr and r:
+	        require maxr ~= none & ~le(r,maxr) & (forall N, MAXR, V . (byz_member(N, q) & ~le(r,MAXR) & vote(N,MAXR,V)) -> le(MAXR,maxr));
+                
+	        if ~is_fast(maxr) {
+	            require exists  N . is_good(N) & proposal(N,maxr,v); # one good node made a proposal; thus v is safe at maxr
+	            require forall N,V . byz_member(N,q) & vote(N,maxr,V) -> V = v; # all votes reported at maxr are for v
+	            proposal(n,r,v) := true
+	        }
+	        else {
+	            # one good node sent a proposal or an "any" message, thus v is safe at maxr:
+	            # require (exists  N . is_good(N) & (proposal(N,maxr,v) | any(N,maxr)));
+	            local v2:value {
+	                require
+	                (exists BIQ . (forall N . byz_inter_member(N,BIQ) -> (byz_member(N,q) & vote(N,maxr,v)))) # F+Q+1 among q have voted for the same value v
+	                | ((exists  N . is_good(N) & (proposal(N,maxr,v) | any(N,maxr))) & (forall V2, BIQ . (forall N . byz_inter_member(N,BIQ) -> byz_member(N,q)) -> (exists N . byz_inter_member(N,BIQ) & ~vote(N,maxr,V2)))); # no value has been voted by F+Q+1 among q 
+	                proposal(n,r,v) := true;
+	            }
+	        }
+	    }
+        }
+    }
+}
+
+action classic_vote = {
+    # receive a 2a and send 2b
+    local n:node, v:value, r:round, q:byz_quorum {
+        require r ~= none;
+	require ~is_fast(r);
+        require ~left_rnd(n,r);
+	require ~vote(n,r,V);
+        require byz_member(N,q) -> proposal(N,r,v);
+        vote(n, r, v) := true
+    }
+}
+
+action fast_vote = {
+    # receive a 2a and send 2b
+    local n:node, v:value, r:round, q:byz_quorum {
+        require r ~= none;
+	require is_fast(r);
+        require ~left_rnd(n,r);
+	require ~vote(n,r,V);
+        require byz_member(N,q) -> any(N,r);
+        vote(n, r, v) := true
+    }
+}
+
+action classic_decide = {
+    local n:node, r:round, v:value, q:byz_quorum {
+        require r ~= none;
+	require ~is_fast(r);
+        require byz_member(N, q) -> vote(N, r, v);
+        decision(n, r, v) := true
+    }
+}
+
+action fast_decide = {
+    local n:node, r:round, v:value, q:byz_fast_quorum {
+        require r ~= none;
+	require is_fast(r);
+        require byz_fast_member(N, q) -> vote(N, r, v);
+        decision(n, r, v) := true
+    }
+}
+
+export send_1a
+export join_round
+export propose
+export fast_vote
+export classic_vote
+export classic_decide
+export fast_decide
+# there is no byzantine action because the invariants below do not say anything about byzantine nodes. Therefore their state can evolve arbitrarily without breaking the invariants.
+
+## The inductive invarant
+
+# safety property:
+conjecture (
+    is_good(N1) & is_good(N2) & decision(N1,R1,V1) & decision(N2,R2,V2)
+) -> V1 = V2
+
+# proposals are unique per round
+conjecture is_good(N) & proposal(N,R,V1) & proposal(N,R,V2) -> V1 = V2
+
+# only vote for proposed values (unless it is a fast round)
+conjecture is_good(N) & vote(N,R,V) & ~is_fast(R) -> exists Q . forall N2 . is_good(N2) & byz_member(N2,Q) -> proposal(N2,R,V)
+
+conjecture is_good(N) & vote(N,R,V) & is_fast(R) -> (exists Q . (forall N2 . is_good(N2) & byz_member(N2,Q) -> proposal(N2,R,V)) | (forall N2 . is_good(N2) & byz_member(N2,Q) -> any(N2,R)))
+
+conjecture is_good(N) & vote(N,R,V1) & vote(N,R,V2) -> V1 = V2
+conjecture is_good(N) & any(N,R) -> is_fast(R)
+conjecture ~(is_good(N) & proposal(N,R,V) & any(N,R))
+
+# decisions come from quorums of votes:
+conjecture ~is_fast(R) & is_good(N) & decision(N,R,V) -> exists Q. forall N2. is_good(N2) & byz_member(N2, Q) -> vote(N2,R,V)
+conjecture is_fast(R) & is_good(N) & decision(N,R,V) -> exists FQ . forall N2. is_good(N2) & byz_fast_member(N2,FQ) -> vote(N2,R,V)
+
+# Properties of choosable and proposal
+conjecture ~le(R2,R1) & ~is_fast(R1) & is_good(N) & ((proposal(N,R2,V2) & V1 ~= V2) | any(N,R2)) ->
+    exists N2. is_good(N2) & byz_member(N2,Q) & left_rnd(N2,R1) & ~vote(N2,R1,V1)
+
+conjecture ~le(R2,R1) & is_fast(R1) & is_good(N) & ((proposal(N,R2,V2) & V1 ~= V2) | any(N,R2)) ->
+    exists N2. is_good(N2) & byz_fast_member(N2,FQ) & left_rnd(N2,R1) & ~vote(N2,R1,V1)
+
+# properties of one_b, left_rnd
+conjecture is_good(N) & one_b(N,R2) & ~le(R2,R1) -> left_rnd(N,R1)
