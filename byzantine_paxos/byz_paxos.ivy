@@ -1,0 +1,119 @@
+#lang ivy1.6
+
+module total_order(r) = {
+    axiom r(X,X)                        # Reflexivity
+    axiom r(X, Y) & r(Y, Z) -> r(X, Z)  # Transitivity
+    axiom r(X, Y) & r(Y, X) -> X = Y    # Anti-symmetry
+    axiom r(X, Y) | r(Y, X)             # Totality
+}
+
+type node
+type value
+type round
+type quorum
+
+individual none: round
+relation le(X:round, Y:round)
+instantiate total_order(le)
+
+relation is_good(N:node) # should be used only in the proof!
+
+relation member(N:node, Q:quorum)
+axiom forall Q1,Q2. exists N. is_good(N) & member(N, Q1) & member(N, Q2)
+
+relation one_a(R:round)
+relation one_b(N:node, R:round)
+relation left_rnd(N:node, R:round)
+relation proposal(N:node, R:round, V:value)
+relation vote(N:node, R:round, V:value)
+relation decision(N:node, R:round, V:value)
+
+init ~one_a(R)
+init ~one_b(N,R)
+init ~left_rnd(N,R)
+init ~proposal(N,R,V)
+init ~vote(N,R,V)
+init ~decision(N,R,V)
+
+action send_1a(r:round) = {
+    # a proposer selects a round and sends a message asking nodes to join the round
+    assume r ~= none;
+    one_a(r) := true
+}
+
+action join_round(n:node, r:round) = {
+    # receive 1a and answer with 1b
+    assume r ~= none;
+    assume one_a(r);
+    assume ~left_rnd(n,r);
+
+    one_b(n,r) := true;
+    left_rnd(n,R) := left_rnd(n,R) | ~le(r,R)
+}
+
+# In propose, the model lets good nodes propose different values in the same round (if all values are safe).
+# This is because a Byzantine leader can send different pre-prepares to different nodes.
+action propose(n:node, r:round, q:quorum) = {
+    # receive a quorum of 1b's and send a 2a (proposal)
+      assume r ~= none;
+      assume ~proposal(n,r,V);
+      assume forall N. member(N, q) -> one_b(N,r);
+      
+      local maxr:round, maxv:value {
+          assume ((forall N, MAXR, V. ~(member(N, q) & ~le(r,MAXR) & vote(N,MAXR,V))) |
+                  ( maxr ~= none &
+                    (exists N. is_good(N) & proposal(N,maxr,maxv)) & # maxv is safe at maxr
+                    (forall N,V . member(N,q) & vote(N,maxr,V) -> V = maxv) & # if there are multiple proposals at maxr, we must make sure that if one was voted for then we use that one
+                    (forall N, MAXR, V. (member(N, q) & ~le(r,MAXR) & vote(N,MAXR,V)) -> le(MAXR,maxr)) # there are no proposals above maxr
+                  ) );
+          # propose value v
+          proposal(n, r, maxv) := true
+      }
+}
+
+action cast_vote(n:node, v:value, r:round, q:quorum) = {
+    # receive a 2a and send 2b
+    assume r ~= none;
+    assume ~left_rnd(n,r);
+    assume member(N,q) -> proposal(N,r,v);
+    vote(n, r, v) := true
+}
+
+action decide(n:node, r:round, v:value, q:quorum) = {
+    # get 2b from a quorum
+    assume r ~= none;
+    assume member(N, q) -> vote(N, r, v);
+    decision(n, r, v) := true
+}
+
+export send_1a
+export join_round
+export propose
+export cast_vote
+export decide
+# There is no Byzantine action because the invariants below do not say anything about Byzantine nodes. Therefore their state can evolve arbitrarily without breaking the invariants.
+
+# safety property:
+conjecture (
+    is_good(N1) &
+    is_good(N2) &
+    decision(N1,R1,V1) &
+    decision(N2,R2,V2)
+) -> V1 = V2
+
+# proposals are unique per round
+conjecture is_good(N) & proposal(N,R,V1) & proposal(N,R,V2) -> V1 = V2
+
+# only vote for proposed values
+conjecture is_good(N) & vote(N,R,V) -> exists Q . forall N2 . is_good(N2) & member(N2,Q) -> proposal(N2,R,V)
+
+# decisions come from quorums of votes:
+conjecture forall R, V, N. is_good(N) & decision(N,R,V) 
+  -> exists Q. forall N2. is_good(N2) & member(N2, Q) -> vote(N2,R,V)
+
+# Properties of choosable and proposal
+conjecture ~le(R2,R1) & is_good(N) & proposal(N,R2,V2) & V1 ~= V2 ->
+    exists N2. is_good(N2) & member(N2,Q) & left_rnd(N2,R1) & ~vote(N2,R1,V1)
+
+# properties of one_b, left_rnd
+conjecture is_good(N) & one_b(N,R2) & ~le(R2,R1) -> left_rnd(N,R1)
