@@ -14,7 +14,7 @@ include network_shim_tcp
 # impl also gives us totality.
 relation leader_of(N:node, E:round_t)
 isolate round_leader = {
-    action get_leader(r:round_t) returns (n:node)
+    action get_leader(r:round_t) returns (n:node) # TODO: needed?
     action get_next_round(r:round_t, n:node) returns (s:round_t)
     specification {
         property [injectivity] leader_of(Y,X) & leader_of(Z,X) -> Y = Z
@@ -100,7 +100,7 @@ isolate system = {
             
             relation decided(S:inst_t,V:value_t)
 
-            object spec_init = {
+            object spec_init = { #TODO: why an object for this?
                 after init {
                     decided(I,V) := false;
                 }
@@ -154,42 +154,65 @@ isolate system = {
 
         action notify_keep_alive
 
-        action notify_leadership_acquired(low:inst_t, high:inst_t)
+        action notify_leadership_acquired(begin:inst_t, end:inst_t)
+
+        action notify_first_undecided(i:inst_t) # TODO: could be merged with notify_decision
 
         individual current_round:round_t
         individual first_undecided:inst_t
-        individual recovery_bound:inst_t
-        relation round_active
+        individual repropose_bound:inst_t
+        relation active_leader
+        relation leadership_acquired
+        individual next_inst:inst_t
 
         specification {
+
+            invariant leadership_acquired -> leader_of(self, current_round)
+            invariant active_leader -> leader_of(self, current_round) & leadership_acquired
 
             after init {
                 current_round := 0;
                 first_undecided := 0;
-                round_active := leader_of(self,0);
+                active_leader := leader_of(self,0);
+                leadership_acquired := leader_of(self,0);
+                next_inst := 0;
             }
-            before propose_highest_or_noop {
+            before propose_highest_or_noop(i:inst_t) {
+                # TODO: reformat
                 assert leader_of(self, current_round);
-                assert ~round_active;
-                assert first_undecided <= i & i < recovery_bound;
+                assert leadership_acquired;
+                assert ~active_leader;
+                assert first_undecided <= i;
+                assert i < repropose_bound;
+                assert i = next_inst;
+                next_inst := next_inst.next
             }
             before send_keep_alive {
                 assert leader_of(self, current_round)
             } 
             before notify_changed_round {
-                current_round := r
+                current_round := r;
+                active_leader := false;
+                leadership_acquired := false;
             }
             before retransmit_two_a {
                 assert leader_of(self, current_round)
-            } 
+            }
             before notify_leadership_acquired {
-                assert leader_of(self, current_round) & ~round_active;
-                assert low <= high;
-                first_undecided := low;
-                recovery_bound := high;
+                require leader_of(self, current_round) & ~leadership_acquired;
+                require begin <= end;
+                next_inst := begin;
+                first_undecided := begin;
+                leadership_acquired := true;
+                repropose_bound := end;
             }
             before activate_round {
-                assert leader_of(self, current_round) & ~round_active;
+                assert leader_of(self, current_round);
+                assert ~active_leader;
+                active_leader := true;
+            }
+            before notify_first_undecided {
+                first_undecided := i;
             }
         }
     }
@@ -202,10 +225,11 @@ isolate system = {
         individual my_log : log # the decision log
         individual first_undecided : inst_t # the first "hole" in the log
         # data structures used upon leadership change:
-        relation round_active # true when successfully acquired leadership
+        relation active_leader # true when successfully acquired leadership # TODO: bad name
         individual my_votes : votemap # max votes by self.
         individual joined: nset # the set of nodes that joined the current round so far
         individual joined_votes: win # window data-structure to hold replica votes upon leader change
+        relation leadership_acquired
 
         function is_decided(J:inst_t):bool
         definition is_decided(J:inst_t) = (J < my_log.end & my_log.value(J).done)
@@ -216,7 +240,8 @@ isolate system = {
             my_votes := votemap.empty;
             joined := nset.emptyset();
             joined_votes := win.empty(0);
-            round_active := leader_of(self,0);
+            leadership_acquired := leader_of(self,0); # when a quorum joins the leader's round
+            active_leader := leader_of(self,0); # after leadership_acquired, when the leader is ready to accept new proposals
             inst_status := ballot_status_array.empty;
             my_log := log.empty;
             first_undecided := 0;
@@ -235,10 +260,9 @@ isolate system = {
         }
 
         implement server.propose(v:value_t) returns (ret:bool) {
-            if leader_of(self, current_round) & round_active {
-                call abs_paxos.propose(next_inst, current_round, v, joined);
+            if leader_of(self, current_round) & active_leader {
+                call abs_paxos.propose(next_inst, current_round, v, joined, 0); # 0 is a dummy value with no meaning in this case
                 call do_propose(next_inst, v);
-                next_inst := next_inst.next;
                 ret := true;
             }
             else {
@@ -251,7 +275,7 @@ isolate system = {
 
         implement shim.one_a_handler.handle(m:msg) {
             if current_round < m.m_round {
-                call change_round(m.m_round);
+                call join_round(m.m_round);
                 var m2:msg;
                 m2.m_kind := msg_kind.one_b;
                 m2.m_round := m.m_round;
@@ -270,19 +294,16 @@ isolate system = {
             };
         }
 
-        action debug_round_active(r:round_t)
-        import debug_round_active
         implement shim.one_b_handler.handle(m:msg) {
-            if current_round = m.m_round & ~round_active {
+            if current_round = m.m_round & ~leadership_acquired {
                 joined := joined.add(m.m_node);
                 joined_votes := joined_votes.zip_max(m.m_votes);
 
-                # activate round
                 if joined.majority {
-                    round_active := true;
-                    call debug_round_active(current_round);
-                    # TODO: propose no-ops from first_undecided to getEnd (use the controller to do that)
-                    next_inst := joined_votes.getEnd();
+                    leadership_acquired := true;
+                    next_inst := first_undecided;
+                    # notify the controller
+                    call control_intf.notify_leadership_acquired(self, first_undecided, joined_votes.getEnd());
                 }
             }
         }
@@ -311,21 +332,7 @@ isolate system = {
                 if (inst_status.size <= m.m_inst.next) {
                     inst_status := inst_status.resize(m.m_inst.next,init_status);
                 };
-                if (my_log.size <= m.m_inst.next) {
-                    my_log := my_log.resize(m.m_inst.next,no_decision);
-                };
-                var d: decision_struct;
-                d.done := true;
-                d.decision := m.m_value;
-                my_log := my_log.set(m.m_inst,d);
-                
-                call update_first_undecided(m.m_inst);
-                
-                var status := inst_status.get(m.m_inst);
-                status.decided := true;
-                inst_status := inst_status.set(m.m_inst,status);
-                
-                call server(self).decide(m.m_inst,m.m_value);
+                call do_decide(m.m_inst, m.m_value);
             }
         }
         
@@ -334,7 +341,7 @@ isolate system = {
         # receiving a vote:
         
         implement shim.two_b_handler.handle(m:msg) {
-            if (leader_of(self, current_round) & round_active & m.m_round = current_round) {
+            if (leader_of(self, current_round) & active_leader & m.m_round = current_round) {
                 if inst_status.end <= m.m_inst { # TODO: should not happen! Get rid of it with an invariant.
                     inst_status := inst_status.resize(m.m_inst.next, init_status)
                 };
@@ -342,33 +349,34 @@ isolate system = {
                 if (~inst_status.value(m.m_inst).decided & inst_status.value(m.m_inst).active) {
                     var status := inst_status.get(m.m_inst);
                     status.voters := status.voters.add(m.m_node);
+                    inst_status := inst_status.set(m.m_inst,status);
                     if status.voters.majority {
-                        call debug_two_b_handler(status.active);
-                        status.decided := true;
-                        
-                        # update local log:
-                        if (my_log.size <= m.m_inst.next) {
-                            my_log := my_log.resize(m.m_inst.next,no_decision);
-                        };
-                        var d: decision_struct;
-                        d.done := true;
-                        d.decision := m.m_value;
-                        my_log := my_log.set(m.m_inst,d);
-
-                        call update_first_undecided(m.m_inst);
-
+                        call do_decide(m.m_inst, m.m_value);
                         var m2:msg := build_decide_msg(m.m_inst);
                         call shim.bcast(self,m2);
-
-                        # assert abs_paxos.proposal(m.m_inst, current_round, m.m_value);
-                        # assert abs_paxos.proposal(m.m_inst, current_round, inst_status.value(m.m_inst).proposal);
-                        # assert m.m_value = inst_status.value(m.m_inst).proposal; TODO: weird...
                         call abs_paxos.decide(m.m_inst, current_round, status.proposal, status.voters); # ghost
-                        call server(self).decide(m.m_inst, m.m_value);
                     };
                     inst_status := inst_status.set(m.m_inst,status)
                 }
             }
+        }
+
+        action do_decide(i:inst_t, v:value_t) = { # TODO: move to internal actions section
+            if (my_log.size <= i.next) {
+                my_log := my_log.resize(i.next,no_decision);
+            };
+            var d: decision_struct;
+            d.done := true;
+            d.decision := v;
+            my_log := my_log.set(i,d);
+            
+            call update_first_undecided(i);
+            
+            var status := inst_status.get(i);
+            status.decided := true;
+            inst_status := inst_status.set(i,status);
+            
+            call server(self).decide(i,v); 
         }
 
         implement shim.keep_alive_handler.handle(m:msg) {
@@ -377,21 +385,17 @@ isolate system = {
 
         implement shim.notify_round(r:round_t) {
             if (current_round < r & ~leader_of(self, r)) { # second condition should not happen. TODO: eliminate with invariant
-                call change_round(r);
+                call join_round(r);
             }
         }
 
         ################################################################################
         # Here we implement the model side of the controller/model interface
 
-        implement control_intf.activate_round {
-            round_active := true;
-            next_inst := joined_votes.getEnd();
-        }
-
         # called when timing out on the current leader:
         implement control_intf.timed_out_on_leader {
-            call change_round(next_self_leader_round(current_round));
+            call join_round(round_leader.get_next_round(current_round, self));
+            
             # self joins the current round:
             joined := nset.emptyset();
             joined := joined.add(self);
@@ -428,16 +432,23 @@ isolate system = {
         }
 
         implement control_intf.propose_highest_or_noop(i:inst_t) {
-            assert leader_of(self, current_round) & ~round_active & first_undecided <= i;
             var highest := joined_votes.read(i);
             if highest.present {
-                call abs_paxos.propose_recovery(i, current_round, highest.val, joined, highest.rnd);
                 call do_propose(i, highest.val);
+                call abs_paxos.propose(i, current_round, highest.val, joined, highest.rnd);
             }
             else {
-                call abs_paxos.propose(i, current_round, no_op, joined);
                 call do_propose(i, no_op);
+                call abs_paxos.propose(i, current_round, no_op, joined, 0); # 0 is a dummy value with no meaning in this case
             };
+        }
+
+        action debug_active_leader(r:round_t)
+        import debug_active_leader
+        implement control_intf.activate_round {
+            call debug_active_leader(current_round);
+            active_leader := true;
+            next_inst := joined_votes.getEnd();
         }
 
         ################################################################################
@@ -447,8 +458,6 @@ isolate system = {
             var m:msg := build_proposal(i,v);
             call shim.bcast(self,m);
             call control_intf(self).notify_two_a(i);
-            
-            call vote(self, i, v);
 
             if (inst_status.end <= i) {
                 inst_status := inst_status.resize(i.next, init_status)
@@ -457,6 +466,8 @@ isolate system = {
             status.active := true;
             status.proposal := v;
             inst_status := inst_status.set(i, status);
+
+            next_inst := i.next;
         }
 
 
@@ -467,26 +478,15 @@ isolate system = {
             m.m_inst := j;
             m.m_value := v;
         }
-
-        # TODO: wrap in an object to expose only a spec?
-        action next_self_leader_round(r:round_t) returns (s:round_t) = {
-            # find the next round in which self is leader
-            var iter := current_round.next;
-            while ~leader_of(self,iter)
-            invariant current_round < iter
-            {
-                iter := iter.next
-            };
-            s := iter;
-        }
         
-        action change_round(r:round_t) = {
+        action join_round(r:round_t) = {
             current_round := r;
             call abs_paxos.join_round(self, r); # ghost
             call control_intf(self).notify_changed_round(current_round);
             
-            round_active := false;
             # reset round data for new round.
+            active_leader := false;
+            leadership_acquired := false;
             inst_status := ballot_status_array.empty;
         }
         
@@ -497,21 +497,11 @@ isolate system = {
             if my_votes.end <= i {
                 my_votes := my_votes.resize(i.next, not_a_vote)
             };
-            # if inst_status.end <= i {
-            #     inst_status := inst_status.resize(i.next, init_status)
-            # };
-            
             var new_vote:vote_struct;
             new_vote.rnd := current_round;
             new_vote.val := v;
             new_vote.present := true;
             my_votes := my_votes.set(i,new_vote);
-            
-            # var status := inst_status.get(i);
-            # status.voters := status.voters.add(self);
-            # status.proposal := v;
-            # status.active := true;
-            # inst_status := inst_status.set(i,status);
             
             call abs_paxos.cast_vote(self, i, current_round, v); # ghost
             
@@ -552,6 +542,7 @@ isolate system = {
                     }
                 };
                 first_undecided := i;
+                call control_intf(self).notify_first_undecided(i);
             }
         }
 
@@ -561,27 +552,28 @@ isolate system = {
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.decide & ~abs_paxos.decision(msg.m_inst(M),msg.m_value(M)))
 
         # keep-alive messages
-        invariant current_round = control_intf(self).current_round
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.keep_alive & current_round < msg.m_round(M) & leader_of(self, msg.m_round(M)))
         
         # round of a message:
         invariant ~(shim.sent(M,D) & (msg.m_kind(M) = msg_kind.one_a | msg.m_kind(M) = msg_kind.two_a | msg.m_kind(M) = msg_kind.one_b | msg.m_kind(M) = msg_kind.two_b) & msg.m_round(M) > model.current_round(msg.m_node(M)))
         
         # current_round and active:
-        # invariant leader_of(self, current_round) -> (round_active <-> abs_paxos.active(current_round))
+        # invariant leader_of(self, current_round) -> (active_leader <-> abs_paxos.active(current_round))
         # invariant ~(leader_of(self, R) & abs_paxos.active(R) & R > current_round)
-        # invariant ~(leader_of(self, current_round) & round_active & ~abs_paxos.active(current_round))
+        # invariant ~(leader_of(self, current_round) & active_leader & ~abs_paxos.active(current_round))
 
         # one_as are sent by leaders and one_bs to leaders
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & ~leader_of(msg.m_node(M),msg.m_round(M)))
         invariant ~(shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b & ~leader_of(D,msg.m_round(M)))
 
         # next_inst bounds proposals
+        invariant leader_of(self, current_round) & ~leadership_acquired -> ~abs_paxos.proposal(I, current_round, V)
         invariant ~(leader_of(self, current_round) & next_inst <= I & abs_paxos.proposal(I, current_round,V))
-        # invariant round_active & leader_of(self, current_round) & next_inst <= I -> abs_paxos.available(current_round,I)
+        # invariant active_leader & leader_of(self, current_round) & next_inst <= I -> abs_paxos.available(current_round,I)
         
         # current_round bounds proposals and votes
-        invariant ~(leader_of(self,R) & (current_round < R | (R = current_round & ~round_active)) & abs_paxos.proposal(I,R,V))
+        # invariant ~(leader_of(self,R) & (current_round < R | (R = current_round & ~active_leader)) & abs_paxos.proposal(I,R,V))
+        invariant ~(leader_of(self,R) & current_round < R & abs_paxos.proposal(I,R,V))
         invariant ~(abs_paxos.vote(self,I,R,V) & current_round < R)
 
         # left_round
@@ -601,24 +593,39 @@ isolate system = {
 
         # one_a messages
         invariant L = msg.m_node(M) & shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a -> leader_of(L, msg.m_round(M)) # TODO: needed?
-        invariant L = msg.m_node(M) & shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & model.current_round(L) = msg.m_round(M) & ~model.round_active(L) -> msg.m_inst(M) = model.first_undecided(L) # TODO: needed?
+        invariant L = msg.m_node(M) & shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_a & model.current_round(L) = msg.m_round(M) & ~model.active_leader(L) -> msg.m_inst(M) = model.first_undecided(L) # TODO: needed?
         
         # one_b messages
         invariant shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b -> (model.current_round(D) >= msg.m_round(M))
-        invariant shim.sent(M,L) & msg.m_kind(M) = msg_kind.one_b & model.current_round(L) = msg.m_round(M) & ~model.round_active(L) -> msg.m_inst(M) = model.first_undecided(L) 
+        invariant shim.sent(M,L) & msg.m_kind(M) = msg_kind.one_b & model.current_round(L) = msg.m_round(M) & ~model.active_leader(L) -> msg.m_inst(M) = model.first_undecided(L) 
         invariant shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b -> msg.m_votes(M).begin(msg.m_inst(M)) 
         invariant shim.sent(M,L) & msg.m_kind(M) = msg_kind.one_b & msg.m_inst(M) <= I & msg.m_votes(M).value(I,S) & present(S) -> (abs_paxos.vote(msg.m_node(M),I,rnd(S),val(S)) & (rnd(S) < R & R < msg.m_round(M) -> ~abs_paxos.vote(msg.m_node(M),I,R,V))) 
         invariant shim.sent(M,L) & msg.m_kind(M) = msg_kind.one_b & msg.m_inst(M) <= I & msg.m_votes(M).value(I,S) & ~present(S) & R < msg.m_round(M) -> ~abs_paxos.vote(msg.m_node(M),I,R,V)
         invariant shim.sent(M,D) & msg.m_kind(M) = msg_kind.one_b -> exists V . msg.m_votes(M).value(I,V)
 
-        # the joined_votes and joined data-structures
-        invariant leader_of(self, current_round) & ~round_active -> joined_votes.begin(first_undecided)
-        invariant exists V . joined_votes.value(I,V)
-        invariant leader_of(self, current_round) & ~round_active & first_undecided <= I & joined_votes.value(I,S) & present(S) ->  abs_paxos.proposal(I,rnd(S),val(S))
-        invariant leader_of(self, current_round) & ~round_active & nset.member(N,joined) -> current_round <= model.current_round(N)
-        invariant leader_of(self, current_round) & ~round_active & first_undecided <= I & joined_votes.value(I,S) & present(S) & rnd(S) < R & R < current_round & nset.member(N,joined) ->  ~abs_paxos.vote(N,I,R,V)
-        invariant leader_of(self, current_round) & ~round_active & first_undecided <= I & joined_votes.value(I,S) & ~present(S) & nset.member(N,joined) & R < current_round -> ~abs_paxos.vote(N,I,R,V)
+        invariant active_leader -> leadership_acquired
 
+        # the joined_votes and joined data-structures
+        relation recovering
+        definition recovering = leader_of(self, current_round) & ~active_leader
+        invariant current_round ~= 0 & leadership_acquired -> nset.majority(joined)
+        invariant leader_of(self, current_round) & ~active_leader -> joined_votes.begin(first_undecided)
+        #invariant recovering -> joined_votes.begin(first_undecided)
+        invariant exists V . joined_votes.value(I,V)
+        invariant leader_of(self, current_round) & ~active_leader & first_undecided <= I & joined_votes.value(I,S) & present(S) ->  abs_paxos.proposal(I,rnd(S),val(S))
+        invariant leader_of(self,current_round) & ~active_leader & nset.member(N,joined) -> current_round <= model.current_round(N)
+        invariant leader_of(self,current_round) & ~active_leader & first_undecided <= I & joined_votes.value(I,S) & present(S) & rnd(S) < R & R < current_round & nset.member(N,joined) ->  ~abs_paxos.vote(N,I,R,V)
+        invariant leader_of(self,current_round) & ~active_leader & first_undecided <= I & joined_votes.value(I,S) & ~present(S) & nset.member(N,joined) & R < current_round -> ~abs_paxos.vote(N,I,R,V)
+
+        # invariants with control interface
+        invariant current_round = control_intf(self).current_round
+        invariant active_leader <-> control_intf(self).active_leader
+        invariant first_undecided = control_intf(self).first_undecided
+        invariant control_intf(self).leadership_acquired <-> leadership_acquired
+        invariant (leadership_acquired | active_leader) -> leader_of(self, current_round)
+        invariant leadership_acquired & current_round ~= 0 -> (joined_votes.end(I) <-> I = control_intf(self).repropose_bound)
+        invariant leadership_acquired -> next_inst = control_intf(self).next_inst
+        
         # the votes array (which represent the node's own votes)
         invariant I < my_votes.end() & my_votes.present(I) -> (my_votes.rnd(I) <= current_round & abs_paxos.vote(self, I, my_votes.rnd(I), my_votes.val(I)) & (my_votes.rnd(I) < R -> ~abs_paxos.vote(self,I,R,V)))
         invariant (I >= my_votes.end | (I < my_votes.end() & ~my_votes.present(I))) -> ~abs_paxos.vote(self,I,R,V)
@@ -629,9 +636,9 @@ isolate system = {
         invariant ~(I < my_log.end & my_log.value(I).done & ~server(self).decided(I,my_log.value(I).decision))
 
         #  next_inst in normal case
-        invariant leader_of(self, current_round) & round_active & nset.member(N, joined) -> model.current_round(N) >= current_round
-        invariant leader_of(self, current_round) & round_active & current_round ~= 0 -> nset.majority(joined)
-        invariant leader_of(self, current_round) & round_active & next_inst <= I & nset.member(N, joined) & R < current_round -> (~abs_paxos.vote(N,I,R,V) & abs_paxos.left_round(N,R))
+        invariant leader_of(self, current_round) & active_leader & nset.member(N, joined) -> model.current_round(N) >= current_round
+        invariant leader_of(self, current_round) & active_leader & current_round ~= 0 -> nset.majority(joined)
+        invariant leader_of(self, current_round) & active_leader & next_inst <= I & nset.member(N, joined) & R < current_round -> (~abs_paxos.vote(N,I,R,V) & abs_paxos.left_round(N,R))
         
     }
 
@@ -641,22 +648,39 @@ isolate system = {
 
     object controller(self:node) = {
 
-        relation round_active
+        relation active_leader
         individual current_round:round_t
         individual first_undecided:inst_t
-        individual recovery_bound:inst_t
+        individual repropose_bound:inst_t
 
         invariant current_round = control_intf(self).current_round
+        invariant first_undecided = control_intf(self).first_undecided
 
         after init {
             current_round := 0;
-            round_active := leader_of(self, 0);
+            active_leader := leader_of(self, 0);
             first_undecided := 0;
         }
 
-        #implement notify_leadership_acquired(low:inst_t, high:inst_t) {
-        #    
-        #}
+        implement control_intf.notify_first_undecided(i:inst_t) {
+            first_undecided := i
+        }
+
+        implement control_intf.notify_leadership_acquired(begin:inst_t, end:inst_t) {
+            first_undecided := begin;
+            repropose_bound := end;
+            if (first_undecided < end) {
+                var i := first_undecided;
+                while (i < end)
+                invariant i <= end
+                invariant first_undecided <= i
+                invariant i = control_intf(self).next_inst
+                {
+                    call control_intf.propose_highest_or_noop(self, i);
+                    i := i.next
+                }
+            }
+        }
 
         object timer = {
             # timeout_sec is a standard module that calls timeout every second:
@@ -675,10 +699,6 @@ isolate system = {
             individual last_start_round : time
             individual timeout : time
 
-            action increase_time
-            action is_leader_too_quiet returns (res: bool)
-            action start_round_timed_out returns (res: bool)
-            
             after init {
                 my_time := 0;
                 last_heard_from_leader := 0;
@@ -698,10 +718,6 @@ isolate system = {
                 current_round := r
             }
             
-            implement is_leader_too_quiet {
-                res := my_time - last_heard_from_leader >= timeout
-            }
-            
             action debug_tick(t:time, b:bool)
             import debug_tick
 
@@ -710,7 +726,7 @@ isolate system = {
                 #call debug_tick(my_time, leader_of(self,current_round));
 
                 if (~leader_of(self,current_round)) {
-                    if is_leader_too_quiet {
+                    if my_time - last_heard_from_leader >= timeout {
                         call control_intf(self).timed_out_on_leader;
                         last_heard_from_leader := my_time;
                     }
@@ -747,7 +763,7 @@ isolate system = {
             }
             
             action tick = {
-                if (leader_of(self, current_round) & round_active) {
+                if (leader_of(self, current_round) & active_leader) {
                     var i:inst_t := 0; # TODO: should be first_undecided;
                     while (i < last_started)
                     invariant i <= last_started
