@@ -320,7 +320,7 @@ isolate system = {
         implement shim.two_a_handler.handle(m:msg) {
             if (current_round = m.m_round) {
 
-                if (~is_decided(m.m_inst) & ~leader_of(self, current_round)) { # Note here the leader may be receiving its own proposal, but it already voted
+                if ~is_decided(m.m_inst) {
                     call vote(m.m_node, m.m_inst, m.m_value);
                 }
                 else if (m.m_node ~= self) {
@@ -344,8 +344,7 @@ isolate system = {
             }
         }
         
-        action debug_two_b_handler(a:bool)
-        import debug_two_b_handler
+        import action debug_two_b_handler(a:bool)
         # receiving a vote:
         
         implement shim.two_b_handler.handle(m:msg) {
@@ -355,14 +354,17 @@ isolate system = {
                 if inst_status.end <= m.m_inst { # TODO: should not happen! Get rid of it with an invariant.
                     inst_status := inst_status.resize(m.m_inst.next, init_status)
                 };
+                call debug_two_b_handler(false);
 
                 var status := inst_status.get(m.m_inst);
                 if (~status.decided & status.active) {
                     status.voters := status.voters.add(m.m_node);
                     inst_status := inst_status.set(m.m_inst,status);
+                    # TODO: why do those asserts make ivyc fail?
                     # TODO: passes here:
                     assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
                     if status.voters.majority {
+                        call debug_two_b_handler(true);
                         # TODO: but fails here! (if uncommenting the assert above):
                         assert I < inst_status.end & nset.member(N,inst_status.value(I).voters) -> abs_paxos.vote(N,I,current_round,inst_status.value(I).proposal);
                         # assert m.m_inst < inst_status.end;
@@ -508,8 +510,7 @@ isolate system = {
             inst_status := ballot_status_array.empty;
         }
         
-        action debug_vote(m:msg)
-        import debug_vote
+        import action debug_vote(m:msg)
         action vote(leader:node, i:inst_t, v:value_t) = { # TODO: why update inst_status? If only the leader tracks other's votes, there's no need
             # resize if needed:
             if my_votes.end <= i {
