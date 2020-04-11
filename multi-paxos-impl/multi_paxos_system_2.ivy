@@ -68,8 +68,8 @@ object system = {
     } with nset
 
     type decision_struct = struct {
-        decision: value_t,
-        done: bool
+        d_value: value_t,
+        d_present: bool
     }
     
     instance log : array(inst_t, decision_struct)
@@ -77,9 +77,9 @@ object system = {
     individual no_decision : decision_struct
     isolate no_decision_initialization = {
         after init {
-            no_decision.done := false
+            no_decision.d_present := false
         }
-        invariant ~no_decision.done
+        invariant ~no_decision.d_present
     }   
 
     object server(self:node) = {
@@ -115,7 +115,7 @@ object system = {
             }
 
             after query {
-                ensure d.done -> decided(i,d.decision)
+                ensure d.d_present -> decided(i,d.d_value)
             }
         }
     }
@@ -231,7 +231,7 @@ object system = {
         relation leadership_acquired
 
         function is_decided(J:inst_t):bool
-        definition is_decided(J:inst_t) = (J < my_log.end & my_log.value(J).done)
+        definition is_decided(J:inst_t) = (J < my_log.end & my_log.value(J).d_present)
 
         after init {
             current_round := 0;
@@ -252,10 +252,10 @@ object system = {
 
         implement server.query(i:inst_t) {
             if is_decided(i) {
-                d.decision := my_log.value(i).decision;
-                d.done := true;
+                d.d_value := my_log.value(i).d_value;
+                d.d_present := true;
             }
-            else d.done := false;
+            else d.d_present := false;
         }
 
         implement server.propose(v:value_t) returns (ret:bool) {
@@ -464,8 +464,8 @@ object system = {
                 my_log := my_log.resize(i.next,no_decision);
             };
             var d: decision_struct;
-            d.done := true;
-            d.decision := v;
+            d.d_present := true;
+            d.d_value := v;
             my_log := my_log.set(i,d);
             
             call update_first_undecided(i);
@@ -528,7 +528,7 @@ object system = {
             m.m_kind := msg_kind.decide;
             m.m_inst := i;
             m.m_round := current_round;
-            m.m_value := my_log.get(i).decision;
+            m.m_value := my_log.get(i).d_value;
             m.m_node := self;
         }
 
@@ -632,8 +632,8 @@ object system = {
         invariant first_undecided <= my_log.end
         
         # decisions:
-        invariant I < my_log.end & my_log.value(I).done -> abs_paxos.decision(I, my_log.value(I).decision)
-        invariant I < my_log.end & my_log.value(I).done -> server(self).decided(I, my_log.value(I).decision)
+        invariant I < my_log.end & my_log.value(I).d_present -> abs_paxos.decision(I, my_log.value(I).d_value)
+        invariant I < my_log.end & my_log.value(I).d_present -> server(self).decided(I, my_log.value(I).d_value)
 
         #  next_inst in normal case
         invariant leader_of(self, current_round) & leader_ready & nset.member(N, joined) -> model.current_round(N) >= current_round
