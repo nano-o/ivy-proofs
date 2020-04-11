@@ -144,7 +144,7 @@ object system = {
                 current_round := 0;
                 first_undecided := 0;
                 leader_ready := leader.leader_of(self,0);
-                leadership_acquired := leader.leader_of(self,0);
+                leadership_acquired := leader.leader_of(self,-1);
                 next_inst := 0;
             }
             before propose_highest_or_noop(i:inst_t) {
@@ -650,6 +650,7 @@ object system = {
                 }
             };
             call control_intf(self).activate_round;
+            leader_ready := true;
         }
 
         object timer = {
@@ -704,6 +705,9 @@ object system = {
                 else { # self is leader of the current round
                     call control_intf(self).send_keep_alive;
                     last_heard_from_leader := my_time;
+                    if (~leader_ready & my_time - last_start_round >= timeout) {
+                        call control_intf(self).timed_out_on_leader; # here the leader kind of timed-out on itself...
+                    }
                 }
             }
         }
