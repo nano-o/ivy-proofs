@@ -533,6 +533,7 @@ object system = {
         }
 
         # update first_undecided to the the next hole in the log.
+        # TODO: move this to the controller
         action update_first_undecided(i:inst_t) = {
             if (i = first_undecided) {
                 var continue:bool := true;
@@ -572,7 +573,6 @@ object system = {
         # invariant leader_ready & leader_of(self, current_round) & next_inst <= I -> abs_paxos.available(current_round,I)
         
         # current_round bounds proposals and votes
-        # invariant ~(leader_of(self,R) & (current_round < R | (R = current_round & ~leader_ready)) & abs_paxos.proposal(I,R,V))
         invariant ~(leader_of(self,R) & current_round < R & abs_paxos.proposal(I,R,V))
         invariant ~(abs_paxos.vote(self,I,R,V) & current_round < R)
 
@@ -618,6 +618,7 @@ object system = {
         invariant recovering & first_undecided <= I & joined_votes.value(I,S) & ~present(S) & nset.member(N,joined) & R < current_round -> ~abs_paxos.vote(N,I,R,V)
 
         # invariants with control interface
+        # TODO: should the recovery phases by only in the controller?
         invariant current_round = control_intf(self).current_round
         invariant leader_ready <-> control_intf(self).leader_ready
         invariant first_undecided = control_intf(self).first_undecided
@@ -635,11 +636,11 @@ object system = {
         invariant I < my_log.end & my_log.value(I).d_present -> abs_paxos.decision(I, my_log.value(I).d_value)
         invariant I < my_log.end & my_log.value(I).d_present -> server(self).decided(I, my_log.value(I).d_value)
 
-        #  next_inst in normal case
+        #  next_inst
+        # TODO: should there even be a next_inst in the model?
         invariant leader_of(self, current_round) & leader_ready & nset.member(N, joined) -> model.current_round(N) >= current_round
         invariant leader_of(self, current_round) & leader_ready & current_round ~= 0 -> nset.majority(joined)
         invariant leader_of(self, current_round) & leader_ready & next_inst <= I & nset.member(N, joined) & R < current_round -> (~abs_paxos.vote(N,I,R,V) & abs_paxos.left_round(N,R))
-        
     }
 
 
