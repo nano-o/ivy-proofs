@@ -1,0 +1,42 @@
+#lang ivy1.7
+
+# Every round has a leader. We represent this with the inverse
+# functional relation `leader_of`. If we use the spec of this
+# isolate, we get just the injectivity property, whereas the
+# impl also gives us totality.
+
+module round_robin_leader(node_t, index_t) = {
+
+    relation leader_of(N:node_t, E:index_t)
+
+    action get_leader(r:index_t) returns (n:node_t) # TODO: needed?
+    action get_next_round(r:index_t, n:node_t) returns (s:index_t)
+
+    specification {
+        property [injectivity] leader_of(Y,X) & leader_of(Z,X) -> Y = Z
+        after get_leader {
+            ensure leader_of(n,r)
+        }
+        after get_next_round {
+            ensure r < s & leader_of(n,s)
+        }
+    }
+    implementation {
+        function leader_fun(R:index_t) : node_t
+        definition leader_fun(r:index_t) = <<< r % `node_t.size` >>>
+        definition leader_of(N,R) = (N = leader_fun(R))
+        implement get_leader(r:index_t) {
+            n := leader_fun(r)
+        }
+        implement get_next_round {
+            var iter := r.next;
+            while ~leader_of(n,iter)
+            invariant r < iter
+            {
+                iter := iter.next
+            };
+            s := iter;
+        }
+    }
+    isolate iso = this with index_t
+}
