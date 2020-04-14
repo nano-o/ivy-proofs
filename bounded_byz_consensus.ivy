@@ -70,9 +70,12 @@ export action commit(n:node, r:round, v:value, q:quorum) = {
     assume ~committed(n,r,V);
     assume q_member(N,q) -> precommitted(N,r,v);
     committed(n, r, v) := true;
-    #if forall R . ~(R < r & locked(n, R, v)) { # if not already locked
+    if forall R . ~(R < r & locked(n, R, v)) { # if not already locked
         locked(n, R, V) := R = r & V = v;
-    #};
+    }
+    else {
+        locked(n, r, v) := true;
+    };
     left_round(n, R) := R < r;
 }
 
@@ -111,15 +114,15 @@ invariant well_behaved(N1) & committed(N1,R,V) -> exists Q . forall N2 . well_be
 
 invariant well_behaved(N1) & decided(N1,R,V) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> committed(N2,R,V) #& locked(N2,R,V) 
 #invariant well_behaved(N1) & decided(N1,R,V) -> exists Q . forall N2 . well_behaved(N2) & q_member(N2,Q) -> precommitted(N2,R,V)
-#invariant well_behaved(N1) & decided(N1,R,V) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> locked(N2,R,V) 
+invariant well_behaved(N1) & decided(N1,R,V) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> locked(N2,R,V) 
 
 # the choosable invariant
 # choosable(R,V,Q):  forall N . member(N,Q) & well_behaved(N) -> (committed(N,R,V) | ~left_round(N,R))
 #####
+invariant well_behaved(N2) & committed(N2,R,V) & ~locked(N2,R,V) -> exists N1 . well_behaved(N1) & q_member(N1,Q1) & left_round(N1,R) & ~committed(N1,R,V)
 #invariant well_behaved(N2) & precommitted(N2,R2,V2) & R1 < R2 & V2 ~= V1 -> exists N1 . well_behaved(N1) & q_member(N1,Q1) & left_round(N1,R1) & ~committed(N1,R1,V1) # FAIL precommmit
 #invariant well_behaved(N2) & precommitted(N2,R2,V2) & R1 < R2 & V2 ~= V1 -> exists N1 . well_behaved(N1) & q_member(N1,Q1) & left_round(N1,R1) & ~locked(N1,R1,V1)
 #invariant (forall N2. well_behaved(N2) & q_member(N2, Q) -> committed(N2,R,V)) -> (forall N2. well_behaved(N2) & q_member(N2, Q) -> locked(N2,R,V)) # FAIL commit
-#conjecture well_behaved(N1) & well_behaved(N2) & precommitted(N2,R2,V2) & R1 < R2 & V2 ~= V1 -> ~committed(N1,R1,V1) # FAIL
 
 # about locks:
 invariant well_behaved(N) & locked(N,R1,V1) & prepared(N,R2,V2) & R1 < R2 -> V1 = V2 # locks prevent preparing conflicting values
@@ -138,4 +141,3 @@ invariant well_behaved(N) & precommitted(N,R2,V2) & R1 < R2 -> left_round(N,R1)
 invariant well_behaved(N) & committed(N,R2,V2) & R1 < R2 -> left_round(N,R1) 
 invariant well_behaved(N) & decided(N,R2,V2) & R1 < R2 -> left_round(N,R1) 
 invariant well_behaved(N) & locked(N,R2,V2) & R1 < R2 -> left_round(N,R1) 
-
