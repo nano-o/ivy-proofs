@@ -88,13 +88,12 @@ export action decide(n:node, r:round, v:value, q:quorum) = {
 # There is no Byzantine action because the invariants below do not say anything about Byzantine nodes. Therefore their state can evolve arbitrarily without breaking the invariants.
 
 # safety property:
-# invariant (
-#     well_behaved(N1) &
-#     well_behaved(N2) &
-#     decided(N1,R1,V1) &
-#     decided(N2,R2,V2)
-# ) -> V1 = V2
-
+invariant (
+    well_behaved(N1) &
+    well_behaved(N2) &
+    decided(N1,R1,V1) &
+    decided(N2,R2,V2)
+) -> V1 = V2
 
 invariant well_behaved(N) & left_round(N,R2) & R1 < R2 -> left_round(N,R1)
 
@@ -113,7 +112,6 @@ invariant well_behaved(N1) & committed(N1,R,V) -> exists Q . forall N2 . well_be
 #invariant well_behaved(N1) & well_behaved(N2) & committed(N1,R,V1) & committed(N2,R,V2) -> V1 = V2
 
 invariant well_behaved(N1) & decided(N1,R,V) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> committed(N2,R,V) #& locked(N2,R,V) 
-#invariant well_behaved(N1) & decided(N1,R,V) -> exists Q . forall N2 . well_behaved(N2) & q_member(N2,Q) -> precommitted(N2,R,V)
 invariant well_behaved(N1) & decided(N1,R,V) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> locked(N2,R,V) 
 
 # the choosable invariant
