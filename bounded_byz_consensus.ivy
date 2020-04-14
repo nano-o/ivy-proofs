@@ -56,7 +56,6 @@ export action relay_precommit(n:node, r:round, v:value, b:blocking) = {
 export action unlock(n:node, r:round, v:value, b:blocking) = {
     assume locked(n, r, v);
     assume b_member(N,b) -> exists R,V . r < R & V ~= v & precommitted(N,R,V);
-    assert R <= r -> exists N . well_behaved(N) & q_member(N,Q) & ~locked(N,R,v);
     locked(n, r, v) := false;
 }
 
@@ -88,19 +87,19 @@ invariant [safety] (
     decided(N2,R2,V2)
 ) -> V1 = V2
 
-# safety follows from those three main invariants:
+# safety is inductive relative to those three main invariants:
 
 # if a well-behaved node has decided, then a quorum has a lock on that value:
-invariant [decision_is_locked] well_behaved(N1) & decided(N1,R,V) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> locked(N2,R,V) 
+invariant [decision_is_locked] (exists N1 . well_behaved(N1) & decided(N1,R,V)) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> locked(N2,R,V) 
 # no two different values may be locked by the same node:
 invariant well_behaved(N) & locked(N,R1,V1) & locked(N,R2,V2) -> V1 = V2
 # if a well-behaved node unlocks, then the value is not choosable anymore (note that we rely on the fact that taking a new lock for v doesn't unlock existing locks for v):
-invariant [unlocking_is_safe] well_behaved(N2) & committed(N2,R,V) & ~locked(N2,R,V) -> exists N1 . well_behaved(N1) & q_member(N1,Q1) & left_round(N1,R) & ~committed(N1,R,V)
+invariant [unlocking_is_safe] (exists N2 . well_behaved(N2) & committed(N2,R,V) & ~locked(N2,R,V)) -> exists N1 . well_behaved(N1) & q_member(N1,Q1) & left_round(N1,R) & ~committed(N1,R,V)
 
 # below are supporting invariants which make the main invariants inductive
 
 # if a node precommitted a value in round R1, then a quorum prepared it in R1 or in a higher round R2:
-invariant well_behaved(N1) & precommitted(N1,R1,V) -> exists Q,R2 . R1 <= R2 & forall N2 . well_behaved(N2) & q_member(N2,Q) -> prepared(N2,R2,V)
+invariant (exists N1 . well_behaved(N1) & precommitted(N1,R1,V)) -> exists Q,R2 . R1 <= R2 & forall N2 . well_behaved(N2) & q_member(N2,Q) -> prepared(N2,R2,V)
 
 # if a node left round R2>R1, then it also left R1
 invariant well_behaved(N) & left_round(N,R2) & R1 < R2 -> left_round(N,R1)
@@ -112,4 +111,5 @@ invariant well_behaved(N) & locked(N,R1,V1) -> committed(N,R1,V1)
 
 # nodes stop preparing or committing in lower rounds when doing so in a higher round:
 invariant well_behaved(N) & prepared(N,R2,V2) & R1 < R2 -> left_round(N,R1) 
-invariant well_behaved(N) & committed(N,R2,V2) & R1 < R2 -> left_round(N,R1) 
+invariant well_behaved(N) & committed(N,R2,V2) & R1 < R2 -> left_round(N,R1)
+
