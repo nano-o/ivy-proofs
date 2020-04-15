@@ -111,14 +111,11 @@ invariant [unlocking_is_safe] (exists N . well_behaved(N) & committed(N,R,V) & ~
 # new invariants for all_safe:
 
 # if a node committed or precommitted a value in round R1, then it is safe:
-invariant well_behaved(N2) & precommitted(N2,R2,V2) & R1<R2 & V1 ~= V2 -> ~choosable(R1,V1)
-invariant well_behaved(N2) & committed(N2,R2,V2) & R1<R2 & V1 ~= V2 -> ~choosable(R1,V1)
+invariant well_behaved(N2) & (committed(N2,R2,V2) | precommitted(N2,R2,V2)) & R1<R2 & V1 ~= V2 -> ~choosable(R1,V1)
+# all_safe(n,r) means nothing is choosable below r:
 invariant well_behaved(N2) & all_safe(N2,R2) & R1 < R2 -> ~choosable(R1,V1)
 
 # below are supporting invariants which make the main invariants inductive
-
-# if a node precommitted a value in round R1, then a quorum prepared it in R1 or in a higher round R2:
-#invariant (exists N1 . well_behaved(N1) & precommitted(N1,R1,V)) -> exists Q,R2 . R1 <= R2 & forall N2 . well_behaved(N2) & q_member(N2,Q) -> prepared(N2,R2,V)
 
 # if a node left round R2>R1, then it also left R1
 invariant well_behaved(N) & left_round(N,R2) & R1 < R2 -> left_round(N,R1)
