@@ -21,6 +21,7 @@ relation precommitted(N:node, R:round, V:value)
 relation committed(N:node, R:round, V:value)
 relation decided(N:node, R:round, V:value)
 relation locked(N:node, R:round, V:value)
+relation all_safe(N:node, R:round) # node N believes all values are safe at R and below
 
 after init {
     left_round(N,R) := false;
@@ -29,6 +30,7 @@ after init {
     committed(N,R,V) := false;
     decided(N,R,V) := false;
     locked(N,R,V) := false;
+    all_safe(N,R) := false;
 }
 
 export action join_round(n:node, r:round) = {
@@ -55,7 +57,7 @@ export action relay_precommit(n:node, r:round, v:value, b:blocking) = {
 
 export action unlock(n:node, r:round, v:value, b:blocking) = {
     assume locked(n, r, v);
-    assume b_member(N,b) -> exists R,V . r < R & V ~= v & precommitted(N,R,V);
+    assume b_member(N,b) -> exists R,V . r < R & ((V ~= v & precommitted(N,R,V)) | all_safe(N,R));
     locked(n, r, v) := false;
 }
 
@@ -65,12 +67,18 @@ export action commit(n:node, r:round, v:value, q:quorum) = {
     assume q_member(N,q) -> precommitted(N,r,v);
     committed(n, r, v) := true;
     left_round(n, R) := R < r; # cannot prepare in lower rounds anymore
-    if forall R . ~(R < r & locked(n, R, v)) { # if not already locked
+    if exists R . R < r & locked(n,R,v) { # v is already locked
+        locked(n, r, v) := true; # take a new lock and keep the old lock too; this makes the invariant cleaner (the old lock is like a history variable)
+    } 
+    else {
+        if exists R,V . R < r & V ~= v & locked(n,R,V) { # if a different value is locked
+            local last_lock: round {
+                assume last_lock < r & exists V . V ~= v & locked(n,last_lock,V);
+                all_safe(n, R) := all_safe(n, R) | R <= last_lock;
+            }
+        };
         locked(n, R, V) := R = r & V = v; # lock (r,v) and unlock everything else
     }
-    else { # keep the old lock too; this makes the invariant cleaner
-        locked(n, r, v) := true;
-    };
 }
 
 export action decide(n:node, r:round, v:value, q:quorum) = {
@@ -95,6 +103,10 @@ invariant [decision_is_locked] (exists N1 . well_behaved(N1) & decided(N1,R,V)) 
 invariant well_behaved(N) & locked(N,R1,V1) & locked(N,R2,V2) -> V1 = V2
 # if a well-behaved node unlocks, then the value is not choosable anymore (note that we rely on the fact that taking a new lock for v doesn't unlock existing locks for v):
 invariant [unlocking_is_safe] (exists N2 . well_behaved(N2) & committed(N2,R,V) & ~locked(N2,R,V)) -> exists N1 . well_behaved(N1) & q_member(N1,Q1) & left_round(N1,R) & ~committed(N1,R,V)
+
+# new invariants for all_safe:
+invariant well_behaved(N2) & locked(N2,R2,V2) & R1<R2 & V1 ~= V2 -> exists N1 . well_behaved(N1) & q_member(N1,Q1) & left_round(N1,R1) & ~committed(N1,R1,V1)
+invariant well_behaved(N2) & all_safe(N2,R2) & R1 < R2 -> exists N1 . well_behaved(N1) & q_member(N1,Q1) & left_round(N1,R1) & ~committed(N1,R1,V)
 
 # below are supporting invariants which make the main invariants inductive
 
