@@ -21,7 +21,7 @@ relation precommitted(N:node, R:round, V:value)
 relation committed(N:node, R:round, V:value)
 relation decided(N:node, R:round, V:value)
 relation locked(N:node, R:round, V:value)
-relation all_safe(N:node, R:round) # node N believes all values are safe at R and below
+relation all_safe(N:node, R:round) # node N believes all values are safe below R
 
 after init {
     left_round(N,R) := false;
@@ -100,7 +100,7 @@ relation choosable(R:round, V:value)
 definition choosable(R,V) = exists Q . forall N . well_behaved(N) & q_member(N,Q) -> ~left_round(N,R) | committed(N,R,V)
 
 # if a well-behaved node has decided, then a quorum has a lock on that value:
-invariant [decision_is_locked] (exists N1 . well_behaved(N1) & decided(N1,R,V)) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> locked(N2,R,V) 
+invariant [decision_is_locked] (exists N1 . well_behaved(N1) & decided(N1,R,V)) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> locked(N2,R,V)
 
 # no two different values may be locked by the same node:
 invariant well_behaved(N) & locked(N,R1,V1) & locked(N,R2,V2) -> V1 = V2
@@ -108,10 +108,9 @@ invariant well_behaved(N) & locked(N,R1,V1) & locked(N,R2,V2) -> V1 = V2
 # if a well-behaved node unlocks, then the value is not choosable anymore (note that we rely on the fact that taking a new lock for v doesn't unlock existing locks for v):
 invariant [unlocking_is_safe] (exists N . well_behaved(N) & committed(N,R,V) & ~locked(N,R,V)) -> ~choosable(R,V)
 
-# new invariants for all_safe:
-
-# if a node committed or precommitted a value in round R1, then it is safe:
+# if a node committed or precommitted a value in round R1, then it is safe (this is the choosable invariant from Paxos):
 invariant well_behaved(N2) & (committed(N2,R2,V2) | precommitted(N2,R2,V2)) & R1<R2 & V1 ~= V2 -> ~choosable(R1,V1)
+
 # all_safe(n,r) means nothing is choosable below r:
 invariant well_behaved(N2) & all_safe(N2,R2) & R1 < R2 -> ~choosable(R1,V1)
 
@@ -128,4 +127,3 @@ invariant well_behaved(N) & locked(N,R1,V1) -> committed(N,R1,V1)
 # nodes stop preparing or committing in lower rounds when doing so in a higher round:
 invariant well_behaved(N) & prepared(N,R2,V2) & R1 < R2 -> left_round(N,R1) 
 invariant well_behaved(N) & committed(N,R2,V2) & R1 < R2 -> left_round(N,R1)
-
