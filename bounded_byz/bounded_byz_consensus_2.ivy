@@ -1,0 +1,123 @@
+#lang ivy1.7
+
+include order
+
+type node
+type value
+instance round : unbounded_sequence
+type quorum
+type blocking # blocking sets
+
+relation well_behaved(N:node) # NOTE: Use only in the proof! Nodes do know know that.
+
+relation q_member(N:node, Q:quorum)
+axiom exists N. well_behaved(N) & q_member(N, Q1) & q_member(N, Q2) # every two quorums have a well-behaved node in common
+relation b_member(N:node, B:blocking)
+axiom exists N . well_behaved(N) & b_member(N,B) # every blocking set contains a well-behaved node
+
+relation left_round(N:node, R:round)
+relation prepared(N:node, R:round, V:value)
+relation precommitted(N:node, R:round, V:value)
+relation committed(N:node, R:round, V:value)
+relation decided(N:node, R:round, V:value)
+relation locked(N:node, R:round, V:value)
+relation all_safe(N:node, R:round) # node N believes all values are safe below R
+
+after init {
+    left_round(N,R) := false;
+    prepared(N,R,V) := false;
+    precommitted(N,R,V) := false;
+    committed(N,R,V) := false;
+    decided(N,R,V) := false;
+    locked(N,R,V) := false;
+    all_safe(N,R) := false;
+}
+
+export action join_round(n:node, r:round) = {
+    assume ~left_round(n,r);
+    left_round(n,R) := R < r;
+}
+
+export action prepare(n:node, r:round, v:value) = {
+    assume ~prepared(n,r,V); # prepare only once (NOTE: could be removed; does not impact safety)
+    assume ~left_round(N,r);
+    assume locked(n,R,V) -> V = v;
+    prepared(n, r, v) := true;
+    left_round(n, R) := R < r; # cannot commit in lower rounds anymore
+}
+
+action update_all_safe(n:node, r1:round, v1:value, r2:round, v2:value) = {
+    assume r1 < r2 & v1 ~= v2 & (precommitted(n,r1,v1) | committed(n,r1,v1)) & (precommitted(n,r2,v2) | committed(n,r2,v2));
+    all_safe(n, R) := all_safe(n, R) | R <= r1;
+}
+
+export action precommit(n:node, r:round, v:value, q:quorum) = {
+    assume q_member(N,q) -> prepared(N,r,v);
+    precommitted(n, r, v) := true;
+}
+
+export action relay_precommit(n:node, r:round, v:value, b:blocking) = {
+    assume b_member(N,b) -> exists R . r <= R & precommitted(N,R,v);
+    precommitted(n, r, v) := true;
+}
+
+export action unlock(n:node, r:round, v:value, b:blocking) = {
+    assume locked(n, r, v);
+    assume b_member(N,b) -> exists R,V . r < R & V ~= v & precommitted(N,R,V);
+    locked(n, r, v) := false;
+}
+
+export action commit(n:node, r:round, v:value, q:quorum) = {
+    assume ~left_round(n,r);
+    assume ~committed(n,r,V); # don't commit twice in the same round
+    assume q_member(N,q) -> precommitted(N,r,v);
+    committed(n, r, v) := true;
+    left_round(n, R) := R < r; # cannot prepare in lower rounds anymore
+    locked(n, R, V) := (locked(n, R, V) | R = r) & V = v; # keep old locks for the same value for use as history variable in the proof
+}
+
+export action decide(n:node, r:round, v:value, q:quorum) = {
+    assume q_member(N, q) -> committed(N, r, v);
+    decided(n, r, v) := true;
+}
+
+# There is no Byzantine action because the invariants below do not say anything about Byzantine nodes. Therefore their state can evolve arbitrarily without breaking the invariants.
+
+# the agreement property:
+####################
+invariant [safety] ( well_behaved(N1) & well_behaved(N2) & decided(N1,R1,V1) & decided(N2,R2,V2)) -> V1 = V2
+
+# notion of choosable and safe at:
+##################################
+relation choosable(R:round, V:value)
+definition choosable(R,V) = exists Q . forall N . well_behaved(N) & q_member(N,Q) -> ~left_round(N,R) | committed(N,R,V)
+relation safe_at(R:round, V:value)
+definition safe_at(R2,V2) = forall R1,V1 . R1 < R2 & V1 ~= V2 -> ~choosable(R1,V1)
+
+# the three invariants below are top-level:
+###########################################
+
+invariant [main] well_behaved(N) & (decided(N,R,V) | committed(N,R,V) | precommitted(N,R,V)) -> safe_at(R,V)
+
+invariant [decision_is_quorum_commit] (exists N1 . well_behaved(N1) & decided(N1,R,V)) -> exists Q. forall N2. well_behaved(N2) & q_member(N2, Q) -> committed(N2,R,V)
+
+invariant [commit_unique_per_round] well_behaved(N) & committed(N,R,V) & committed(N,R,V2) -> V = V2
+
+# the other crucial invariant:
+##############################
+
+# if a well-behaved node unlocks, then the value is not choosable anymore (note that we rely on the fact that taking a new lock for v doesn't unlock existing locks for v):
+invariant [unlocking_is_safe] (exists N . well_behaved(N) & committed(N,R,V) & ~locked(N,R,V)) -> ~choosable(R,V)
+
+# now, supporting invariants:
+#############################
+
+# if a node left round R2>R1, then it also left R1
+invariant well_behaved(N) & left_round(N,R2) & R1 < R2 -> left_round(N,R1)
+
+# a node that has a lock on v at round R1 does not prepare a value v' ~= v at a higher round R2:
+invariant well_behaved(N) & locked(N,R1,V1) & prepared(N,R2,V2) & R1 < R2 -> V1 = V2
+
+# nodes stop preparing or committing in lower rounds when doing so in a higher round:
+invariant well_behaved(N) & prepared(N,R2,V2) & R1 < R2 -> left_round(N,R1) 
+invariant well_behaved(N) & committed(N,R2,V2) & R1 < R2 -> left_round(N,R1)
