@@ -73,7 +73,7 @@ export action commit(n:node, r:round, v:value, q:quorum) = {
     assume q_member(N,q) -> precommitted(N,r,v);
     committed(n, r, v) := true;
     left_round(n, R) := R < r; # cannot prepare in lower rounds anymore
-    locked(n, R, V) := R = r & V = v;
+    locked(n, R, V) := R = r & V = v; # release any existing lock and take a new lock
 }
 
 export action decide(n:node, r:round, v:value, q:quorum) = {
@@ -106,7 +106,7 @@ invariant [commit_unique_per_round] well_behaved(N) & committed(N,R,V) & committ
 # the other crucial invariant:
 ##############################
 
-# if a well-behaved node unlocks, then the value is not choosable anymore (note that we rely on the fact that taking a new lock for v doesn't unlock existing locks for v):
+# if a well-behaved node unlocks, then the value is not choosable anymore or it locks the same value at a higher round:
 invariant [unlocking_is_safe] well_behaved(N) & committed(N,R,V) & ~locked(N,R,V) -> (~choosable(R,V) | exists R2 . R < R2 & locked(N,R2,V))
 invariant [alexey_s_invariant] well_behaved(N) & choosable(R,V) & committed(N,R,V) & prepared(N,R2,V2) & R<R2 -> V=V2
 
