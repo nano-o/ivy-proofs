@@ -84,7 +84,7 @@ export action decide(n:node, r:round, v:value, q:quorum) = {
 # There is no Byzantine action because the invariants below do not say anything about Byzantine nodes. Therefore their state can evolve arbitrarily without breaking the invariants.
 
 # the agreement property:
-####################
+#########################
 invariant [safety] ( well_behaved(N1) & well_behaved(N2) & decided(N1,R1,V1) & decided(N2,R2,V2)) -> V1 = V2
 
 # notion of choosable and safe at:
@@ -108,6 +108,7 @@ invariant [commit_unique_per_round] well_behaved(N) & committed(N,R,V) & committ
 
 # if a well-behaved node unlocks, then the value is not choosable anymore or it locks the same value at a higher round:
 invariant [unlocking_is_safe] well_behaved(N) & committed(N,R,V) & ~locked(N,R,V) -> (~choosable(R,V) | exists R2 . R < R2 & locked(N,R2,V))
+# Alexey's formulation of the above: invariant well_behaved(N) & choosable(R,V) & committed(N,R,V) -> exists R2 . R <= R2 & locked(N,R2,V)
 invariant [alexey_s_invariant] well_behaved(N) & choosable(R,V) & committed(N,R,V) & prepared(N,R2,V2) & R<R2 -> V=V2
 
 # now, supporting invariants:
@@ -120,5 +121,5 @@ invariant well_behaved(N) & left_round(N,R2) & R1 < R2 -> left_round(N,R1)
 invariant well_behaved(N) & locked(N,R1,V1) & prepared(N,R2,V2) & R1 < R2 -> V1 = V2
 
 # nodes stop preparing or committing in lower rounds when doing so in a higher round:
-invariant well_behaved(N) & prepared(N,R2,V2) & R1 < R2 -> left_round(N,R1) 
+invariant well_behaved(N) & prepared(N,R2,V2) & R1 < R2 -> left_round(N,R1)
 invariant well_behaved(N) & committed(N,R2,V2) & R1 < R2 -> left_round(N,R1)
