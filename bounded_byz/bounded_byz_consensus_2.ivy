@@ -106,19 +106,14 @@ invariant [commit_unique_per_round] well_behaved(N) & committed(N,R,V) & committ
 # the other crucial invariant:
 ##############################
 
-# if a well-behaved node unlocks, then the value is not choosable anymore or it locks the same value at a higher round:
-invariant [unlocking_is_safe] well_behaved(N) & committed(N,R,V) & ~locked(N,R,V) -> (~choosable(R,V) | exists R2 . R < R2 & locked(N,R2,V))
-# Alexey's formulation of the above: invariant well_behaved(N) & choosable(R,V) & committed(N,R,V) -> exists R2 . R <= R2 & locked(N,R2,V)
-invariant [alexey_s_invariant] well_behaved(N) & choosable(R,V) & committed(N,R,V) & prepared(N,R2,V2) & R<R2 -> V=V2
+# a well-behaved node keeps holding a lock on a committed value and does not prepare something else as long as the value is choosable:
+invariant [locks] well_behaved(N) & committed(N,R,V) & choosable(R,V) -> (exists R2 . R <= R2 & locked(N,R2,V)) & (R < R3 & prepared(N,R3,V3) -> V = V3)
 
 # now, supporting invariants:
 #############################
 
 # if a node left round R2>R1, then it also left R1
 invariant well_behaved(N) & left_round(N,R2) & R1 < R2 -> left_round(N,R1)
-
-# a node that has a lock on v at round R1 does not prepare a value v' ~= v at a higher round R2:
-invariant well_behaved(N) & locked(N,R1,V1) & prepared(N,R2,V2) & R1 < R2 -> V1 = V2
 
 # nodes stop preparing or committing in lower rounds when doing so in a higher round:
 invariant well_behaved(N) & prepared(N,R2,V2) & R1 < R2 -> left_round(N,R1)
