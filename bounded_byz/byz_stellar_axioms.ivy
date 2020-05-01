@@ -19,11 +19,17 @@ axiom intertwined(N) -> well_behaved(N)
 relation member(N:node, Q:nset)
 relation is_quorum(Q:nset)
 
+relation quorum_of_intact(Q:nset)
+definition quorum_of_intact(Q) = (is_quorum(Q) & exists N . intact(N) & member(N,Q))
+
 # quorum intersection for intact nodes:
-axiom (exists N1 . intact(N1) & is_quorum(Q1) & member(N1,Q1)) & (exists N2 . intact(N2) & is_quorum(Q2) & member(N2,Q2)) -> exists N3 . intact(N3) & member(N3,Q1) & member(N3,Q2)
+axiom quorum_of_intact(Q1) & quorum_of_intact(Q2) -> exists N3 . intact(N3) & member(N3,Q1) & member(N3,Q2)
+
+relation quorum_of_intertwined(Q:nset)
+definition quorum_of_intertwined(Q) = (is_quorum(Q) & exists N . intertwined(N) & member(N,Q))
 
 # quorum intersection for intertwined nodes:
-axiom (exists N1 . intertwined(N1) & is_quorum(Q1) & member(N1,Q1)) & (exists N2 . intertwined(N2) & is_quorum(Q2) & member(N2,Q2)) -> exists N3 . well_behaved(N3) & member(N3,Q1) & member(N3,Q2)
+axiom quorum_of_intertwined(Q1) & quorum_of_intertwined(Q2) -> exists N3 . well_behaved(N3) & member(N3,Q1) & member(N3,Q2)
 
 relation blocks_slices(S:nset, N:node)
 # if set R blocks an intact node then R contains an intact node
@@ -112,8 +118,6 @@ invariant [safety] ( intact(N1) & intact(N2) & decided(N1,R1,V1) & decided(N2,R2
 
 # notion of choosable and safe at:
 ##################################
-relation quorum_of_intact(Q:nset)
-definition quorum_of_intact(Q) = (is_quorum(Q) & exists N . intact(N) & member(N,Q))
 relation choosable(R:round, V:value)
 definition choosable(R,V) = exists Q . quorum_of_intact(Q) & forall N . well_behaved(N) & member(N,Q) -> ~left_round(N,R) | committed(N,R,V)
 relation safe_at(R:round, V:value)
