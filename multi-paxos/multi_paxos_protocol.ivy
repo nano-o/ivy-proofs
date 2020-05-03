@@ -20,23 +20,15 @@ trusted isolate nset = { # abstract type of node sets
     }
 }
 
-type vote_struct = struct {
+type vote_t = struct {
    rnd : round_t,
    val: value_t,
    present : bool
 }
 
-object votemap = { # abstract log datatype
-    instantiate array(inst_t, vote_struct)
-
-    function val(M:t,I:inst_t):value_t
-    definition val(M,I) = value(M,I).val
-
-    function rnd(M:t,I:inst_t):round_t
-    definition rnd(M,I) = value(M,I).rnd
-
-    function present(M:t,I:inst_t):bool
-    definition present(M,I) = value(M,I).present
+type log_t = struct { # abstract log datatype
+    at(I:inst_t): vote_t,
+    end:inst_t
 }
 
 isolate multi_paxos = {
@@ -81,17 +73,17 @@ isolate multi_paxos = {
         left_round(n,R) := left_round(n,R) | R < r;
     }
 
-    action activate_round(r:round_t, q:nset, min_i:inst_t) = {
+    action activate_round(r:round_t, q:nset, min_i:inst_t) = { # min_i is the min instance that the leader is going to propose to in round r
         require ~active(r);
         require nset.majority(q);
         require nset.member(N, q) & R < r -> left_round(N,R);
-        local m:votemap {
-            require m.end <= I & nset.member(N,q) & R < r -> ~vote(N,I,R,V);
-            require min_i <= I & I < m.end -> (
-                (~m.present(I) & forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,I,R,V))) |
-                (m.present(I) & m.rnd(I) < r & proposal(I,m.rnd(I),m.val(I)) & (forall N,R,V.  ~(nset.member(N, q) & m.rnd(I) < R & R < r & vote(N,I,R,V)))) );
+        local l:log_t {
+            require l.end <= I & nset.member(N,q) & R < r -> ~vote(N,I,R,V);
+            require min_i <= I & I < l.end -> (
+                (~l.at(I).present & forall N,R,V. ~(nset.member(N, q) & R < r & vote(N,I,R,V))) |
+                (l.at(I).present & l.at(I).rnd < r & proposal(I,l.at(I).rnd,l.at(I).val) & (forall N,R,V.  ~(nset.member(N, q) & l.at(I).rnd < R & R < r & vote(N,I,R,V)))) );
             # send the proposals
-            proposal(I, r, V) := proposal(I, r, V) | (min_i <= I & I < m.end & m.present(I) & V = m.val(I))
+            proposal(I, r, V) := proposal(I, r, V) | (min_i <= I & I < l.end & l.at(I).present & V = l.at(I).val)
         };
         # activate the round
         active(r) := true;
@@ -117,7 +109,7 @@ isolate multi_paxos = {
         decision(i, v) := true
     }
 }
-with nset, round_t, inst_t, votemap
+with nset, round_t, inst_t, log_t
 
 # test
 
