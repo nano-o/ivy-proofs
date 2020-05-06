@@ -16,11 +16,11 @@ trusted isolate quorum_intersection = {
 
 # first, the absract protocol:
 isolate abs = {
-    relation left_rnd(N:node, R:round) 
-    relation proposal(R:round, V:value) 
-    relation vote(N:node, R:round, V:value) 
+    relation left_rnd(N:node, R:round)
+    relation proposal(R:round, V:value)
+    relation vote(N:node, R:round, V:value)
     relation decision(N:node, R:round, V:value)
-    
+
     after init {
         left_rnd(N,R) := false;
         proposal(R,V) := false;
@@ -32,7 +32,7 @@ isolate abs = {
         require ~left_rnd(n,r);
         left_rnd(n,R) := left_rnd(n,R) | R < r
     }
-    
+
     action propose(r:round, q:quorum, maxr:round, v:value) = {
         require ~proposal(r,V);
         require forall N, R . member(N, q) & R < r -> left_rnd(N,R);
@@ -77,7 +77,7 @@ isolate abs = {
         # Properties of choosable and proposal
         conjecture forall R1, R2, V1, V2, Q. R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
             exists N . member(N,Q) & left_rnd(N,R1) & ~vote(N,R1,V1)
-        
+
     }
 
 } with round, quorum_intersection
@@ -88,12 +88,12 @@ isolate protocol = {
     # We now introduce explicit one_b messages that contain the maximum round at which the sender voted and the corresponding value.
 
     # note that round 0 is never "used" because 1b messages with round 0 are rejected and thus no leader can execute phase 2a for round 0.
-    
+
     relation one_a(R:round)
-    relation one_b(N:node, R:round, MAXR:round, MAXV:value) 
+    relation one_b(N:node, R:round, MAXR:round, MAXV:value)
     individual current_round(N:node) : round
-    relation proposal(R:round, V:value) 
-    relation vote(N:node, R:round, V:value) 
+    relation proposal(R:round, V:value)
+    relation vote(N:node, R:round, V:value)
     relation decision(N:node, R:round, V:value)
 
     after init {
@@ -120,7 +120,7 @@ isolate protocol = {
         one_b(n,r,maxr,maxv) := true;
         call abs.join_round(n,r)
     }
-    
+
     action propose(r:round, q:quorum, maxr:round, v:value) = {
         assume ~proposal(r,V);
         assume forall N. member(N, q) -> exists MAXR,V. one_b(N,r,MAXR,V);
@@ -152,7 +152,7 @@ isolate protocol = {
     export send_1b
     export propose
     export cast_vote
-    export decide    
+    export decide
 
     specification {
         # safety property:
@@ -173,5 +173,5 @@ isolate protocol = {
         conjecture one_b(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
         conjecture one_b(N,R,MAXR,V) -> MAXR < R
     }
-    
+
 } with abs, round, quorum_intersection
