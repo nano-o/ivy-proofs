@@ -87,10 +87,6 @@ isolate abs = {
 # now the more concrete specification:
 isolate protocol = {
 
-    # We now introduce explicit one_b messages that contain the maximum round at which the sender voted and the corresponding value.
-
-    # note that round 0 is never "used" because 1b messages with round 0 are rejected and thus no leader can execute phase 2a for round 0.
-
     relation one_a(R:round)
     relation one_b(N:node, R:round, MAXR:round, MAXV:value)
     individual current_round(N:node) : round
@@ -98,13 +94,20 @@ isolate protocol = {
     relation vote(N:node, R:round, V:value)
     relation decision(N:node, R:round, V:value)
 
+    # broadcast messages:
+    relation one_b_msg(N:node, R:round, MAXR:round, MAXV:value)
+
+    # received messsages:
+    relation received_vote_msg(M:node, N:node, R:round, V:value)
+
     after init {
         one_a(R) := false;
-        one_b(N,R,MAXR,V) := false;
+        one_b_msg(N,R,MAXR,V) := false;
         current_round(N) := 0;
         proposal(R,V) := false;
         vote(N,R,V) := false;
         decision(N,R,V) := false;
+        received_vote_msg(M,N,R,V) := false;
     }
 
     action send_1a(r:round) = {
@@ -119,19 +122,18 @@ isolate protocol = {
            (forall R,V. (R  < r & vote(n,R,V)) -> R <= maxr))
         );
         current_round(n) := r;
-        one_b(n,r,maxr,maxv) := true;
+        one_b_msg(n,r,maxr,maxv) := true;
         call abs.join_round(n,r)
     }
-
     action propose(r:round, q:quorum, maxr:round, v:value) = {
         assume ~proposal(r,V);
-        assume forall N. member(N, q) -> exists MAXR,V. one_b(N,r,MAXR,V);
+        assume forall N. member(N, q) -> exists MAXR,V. one_b_msg(N,r,MAXR,V);
 
         # find the maximal vote in the quorum
         # here, compared to the protocol isolate, the leader uses the contents of the one_b messages instead of the vote relation
-        assume ((forall N. member(N, q) -> exists V . one_b(N,r,0,V)) | (
-           (exists N. member(N, q) & maxr < r & one_b(N,r,maxr,v)) &
-           (forall N,R,V. (member(N, q) & R  < r & one_b(N,r,R,V)) -> R <= maxr))
+        assume ((forall N. member(N, q) -> exists V . one_b_msg(N,r,0,V)) | (
+           (exists N. member(N, q) & maxr < r & one_b_msg(N,r,maxr,v)) &
+           (forall N,R,V. (member(N, q) & R  < r & one_b_msg(N,r,R,V)) -> R <= maxr))
         );
         proposal(r, v) := true;
         call abs.propose(r, q, maxr, v)
@@ -144,8 +146,13 @@ isolate protocol = {
         call abs.cast_vote(n, v, r)
     }
 
+    action receive_vote_msg(m:node, n:node, r:round, v:value) = {
+        assume vote(n,r,v);
+        received_vote_msg(m,n,r,v) := true;
+    }
+
     action decide(n:node, r:round, v:value, q:quorum) = {
-        assume forall N . member(N, q) -> vote(N, r, v);
+        assume forall N . member(N, q) -> received_vote_msg(n, N, r, v);
         decision(n, r, v) := true;
         call abs.decide(n, r, v, q)
     }
@@ -172,10 +179,10 @@ isolate protocol = {
         conjecture vote(N,R,V) <-> abs.vote(N,R,V)
         conjecture decision(N,R,V) <-> abs.decision(N,R,V)
         conjecture proposal(R,V) <-> abs.proposal(R,V)
-        conjecture one_b(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R
-        conjecture one_b(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
-        conjecture one_b(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
-        conjecture one_b(N,R,MAXR,V) -> MAXR < R
+        conjecture one_b_msg(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R
+        conjecture one_b_msg(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
+        conjecture one_b_msg(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
+        conjecture one_b_msg(N,R,MAXR,V) -> MAXR < R
     }
 
 } with abs, round, quorum_intersection
