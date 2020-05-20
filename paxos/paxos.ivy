@@ -162,6 +162,8 @@ isolate protocol = {
           decision(N1,R1,V1) &
           decision(N2,R2,V2)
         ) -> V1 = V2
+
+	conjecture decision(N,R,V) -> proposal(R,V)
     }
 
     private {
