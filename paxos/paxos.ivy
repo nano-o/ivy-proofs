@@ -10,13 +10,13 @@ include timeout
 type value_t
 instance round_t : unbounded_sequence
 
-# first, the absract protocol:
-isolate abs = {
-    relation left_rnd(N:node, R:round_t) 
-    relation proposal(R:round_t, V:value_t) 
-    relation vote(N:node, R:round_t, V:value_t) 
+# first, the protocol_1ract protocol:
+isolate protocol_1 = {
+    relation left_rnd(N:node, R:round_t)
+    relation proposal(R:round_t, V:value_t)
+    relation vote(N:node, R:round_t, V:value_t)
     relation decision(N:node, R:round_t, V:value_t)
-    
+
     after init {
         left_rnd(N,R) := false;
         proposal(R,V) := false;
@@ -28,7 +28,7 @@ isolate abs = {
         require ~left_rnd(n,r);
         left_rnd(n,R) := left_rnd(n,R) | R < r
     }
-    
+
     action propose(r:round_t, q:nset, maxr:round_t, v:value_t) = {
         require ~proposal(r,V);
         if (r ~= 0) { # everything is safe at 0
@@ -107,7 +107,7 @@ isolate network_shim = {
     }
 
     relation sent(M:msg,N:node)
-    
+
     instance one_a_handler : handler(msg_kind.one_a)
     instance one_b_handler : handler(msg_kind.one_b)
     instance two_a_handler : handler(msg_kind.two_a)
@@ -129,7 +129,7 @@ isolate network_shim = {
         before bcast {
             sent(m,D) := true
         }
-        
+
         before unicast {
             sent(m,dst) := true;
         }
@@ -145,7 +145,7 @@ isolate network_shim = {
             if m.m_kind ~= msg_kind.one_a {
                 call notify_round(dst, m.m_round)
             };
-            
+
             #call debug_receiving(dst,m);
             if m.m_kind = msg_kind.one_a {
                 call one_a_handler.handle(dst,m)
@@ -175,7 +175,7 @@ isolate network_shim = {
                 call debug_sending(src,dst,m);
             };
         }
-        
+
         implement bcast { # broadcast sends to all nodes, including the sender.
             var iter := node.iter.create(0);
             while ~iter.is_end
@@ -239,8 +239,7 @@ isolate system = {
         d_value : value_t,
         d_present: bool
     }
-    
-    
+
     individual no_decision : decision_s
 
     object no_decision_initialization = { # a hack to get around the fact that we don't have struct values in Ivy
@@ -248,7 +247,7 @@ isolate system = {
             no_decision.d_present := false
         }
         invariant ~no_decision.d_present
-    } 
+    }
 
     object server(self:node) = {
 
@@ -264,7 +263,7 @@ isolate system = {
 
         # the service specification:
         specification {
-            
+
             relation decided(V:value_t)
 
             after init {
@@ -291,7 +290,7 @@ isolate system = {
 
     isolate ballot_protocol(self:node) = {
 
-        individual current_round: round_t 
+        individual current_round: round_t
         individual my_max_vote: vote_s
         invariant my_max_vote.v_present -> my_max_vote.v_round <= current_round
         individual decision: decision_s
@@ -315,14 +314,14 @@ isolate system = {
 
         implement server.propose(v:value_t) returns (ret:bool) {
             if leader_of(self, current_round) & active_leader {
-                call abs.propose(current_round, joined, max_joined_vote.v_round, v);
+                call protocol_1.propose(current_round, joined, max_joined_vote.v_round, v);
                 ret := true;
             }
             else {
                 ret := false;
             }
         }
-    } with abs
+    } with protocol_1
 
     object leader_election_interface(self:node) = {
         # Calls from controller to model
@@ -338,13 +337,13 @@ isolate system = {
     # object that starts new rounds when timing out on the leader and sends heartbeat messages when self is a leader.
     object leader_election(self:node) = {
 
-        
+
         individual current_round : round_t
         individual my_time : time
         individual last_heard_from_leader : time
         individual last_start_round : time
         individual timeout : time
-        
+
         after init {
             my_time := 0;
             last_heard_from_leader := 0;
@@ -354,7 +353,7 @@ isolate system = {
         }
 
         implement leader_election_interface.notify_keep_alive {
-            last_heard_from_leader := my_time; 
+            last_heard_from_leader := my_time;
         }
 
         implement leader_election_interface.notify_changed_round(r:round_t) {
@@ -364,7 +363,7 @@ isolate system = {
             last_heard_from_leader := my_time;
             current_round := r
         }
-        
+
         action debug_tick(t:time, b:bool)
         import debug_tick
 
@@ -392,12 +391,12 @@ isolate system = {
 #     # We now introduce explicit one_b messages that contain the maximum round at which the sender voted and the corresponding value.
 
 #     # note that round 0 is never "used" because 1b messages with round 0 are rejected and thus no leader can execute phase 2a for round 0.
-    
+
 #     relation one_a(R:round)
-#     relation one_b(N:node, R:round, MAXR:round, MAXV:value_t) 
+#     relation one_b(N:node, R:round, MAXR:round, MAXV:value_t)
 #     individual current_round(N:node) : round
-#     relation proposal(R:round, V:value_t) 
-#     relation vote(N:node, R:round, V:value_t) 
+#     relation proposal(R:round, V:value_t)
+#     relation vote(N:node, R:round, V:value_t)
 #     relation decision(N:node, R:round, V:value_t)
 
 #     after init {
@@ -422,9 +421,9 @@ isolate system = {
 #         );
 #         current_round(n) := r;
 #         one_b(n,r,maxr,maxv) := true;
-#         call abs.join_round(n,r)
+#         call protocol_1.join_round(n,r)
 #     }
-    
+
 #     action propose(r:round, q:quorum, maxr:round, v:value_t) = {
 #         assume ~proposal(r,V);
 #         assume forall N. member(N, q) -> exists MAXR,V. one_b(N,r,MAXR,V);
@@ -436,27 +435,27 @@ isolate system = {
 #            (forall N,R,V. (member(N, q) & R  < r & one_b(N,r,R,V)) -> R <= maxr))
 #         );
 #         proposal(r, v) := true;
-#         call abs.propose(r, q, maxr, v)
+#         call protocol_1.propose(r, q, maxr, v)
 #     }
 
 #     action cast_vote(n:node, v:value_t, r:round) = {
 #         assume current_round(n) = r;
 #         assume proposal(r, v);
 #         vote(n, r, v) := true;
-#         call abs.cast_vote(n, v, r)
+#         call protocol_1.cast_vote(n, v, r)
 #     }
 
 #     action decide(n:node, r:round, v:value_t, q:quorum) = {
 #         assume forall N . member(N, q) -> vote(N, r, v);
 #         decision(n, r, v) := true;
-#         call abs.decide(n, r, v, q)
+#         call protocol_1.decide(n, r, v, q)
 #     }
 
 #     export send_1a
 #     export send_1b
 #     export propose
 #     export cast_vote
-#     export decide    
+#     export decide
 
 #     specification {
 #         # safety property:
@@ -467,15 +466,15 @@ isolate system = {
 #     }
 
 #     private {
-#         conjecture current_round(N) = R & R <= R2 -> ~abs.left_rnd(N,R2)
-#         conjecture current_round(N) = R & R2 < R -> abs.left_rnd(N,R2)
-#         conjecture vote(N,R,V) <-> abs.vote(N,R,V)
-#         conjecture decision(N,R,V) <-> abs.decision(N,R,V)
-#         conjecture proposal(R,V) <-> abs.proposal(R,V)
+#         conjecture current_round(N) = R & R <= R2 -> ~protocol_1.left_rnd(N,R2)
+#         conjecture current_round(N) = R & R2 < R -> protocol_1.left_rnd(N,R2)
+#         conjecture vote(N,R,V) <-> protocol_1.vote(N,R,V)
+#         conjecture decision(N,R,V) <-> protocol_1.decision(N,R,V)
+#         conjecture proposal(R,V) <-> protocol_1.proposal(R,V)
 #         conjecture one_b(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R
-#         conjecture one_b(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
-#         conjecture one_b(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
+#         conjecture one_b(N,R,MAXR,V) & MAXR ~= 0 -> protocol_1.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~protocol_1.vote(N,R2,V)))
+#         conjecture one_b(N,R,0,V) & R2 < R -> ~protocol_1.vote(N,R2,V2)
 #         conjecture one_b(N,R,MAXR,V) -> MAXR < R
 #     }
-    
-# } with abs, round, quorum_intersection
+
+# } with protocol_1, round, quorum_intersection
