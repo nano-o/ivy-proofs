@@ -171,6 +171,8 @@ isolate protocol = {
         ) -> V1 = V2
 
 	conjecture decision(N,R,V) -> proposal(R,V)
+	#added the conjecture on recived vote msg and vote
+	conjecture received_vote_msg(M,N,R,V) -> vote(N,R,V)
     }
 
     private {
