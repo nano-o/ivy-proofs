@@ -4,7 +4,7 @@
 
 include order
 
-type node
+instance node : iterable
 type value
 type quorum
 instance round : unbounded_sequence
