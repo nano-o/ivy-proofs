@@ -1,7 +1,8 @@
 #lang ivy1.7
 
-include tcp
-include paxos
+#include tcp
+include test
+#include paxos
 
 object msg_kind = {
     type this = {one_a, one_b, proposal, vote}
@@ -20,10 +21,13 @@ instance net : simple_tcp(node,msg)
 
 isolate shim = {
 
+    #You could start by using the shim only to send and receive vote messages, while leaving the rest as is.
+
     module handler(p_kind) = {
         action handle(dst:node,m:msg)
         object spec = {
             before handle {
+		#net.send is executed
                 assert sent(m,dst) & m.m_kind = p_kind
             }
         }
@@ -33,7 +37,8 @@ isolate shim = {
 
     instance proposal_handler : handler(msg_kind.proposal)
     instance vote_handler : handler(msg_kind.vote)
-    # TODO: the other two handlers
+    instance onea_handler : handler(msg_kind.one_a)
+    instance oneb_handler : handler(msg_kind.one_b)
 
     action broadcast(src:node,m:msg)
 
@@ -56,7 +61,7 @@ isolate shim = {
             if m.m_kind = msg_kind.proposal {
                 call proposal_handler.handle(dst,m)
             }
-            else if m.m_kind = msg_kind.proposal {
+            else if m.m_kind = msg_kind.vote {
                 call vote_handler.handle(dst,m)
             }
         }

@@ -1,0 +1,8 @@
+#lang ivy1.7
+
+include order
+include tcp
+instance node : iterable
+type value
+type quorum
+instance round : unbounded_sequence

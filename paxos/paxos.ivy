@@ -1,13 +1,17 @@
 #lang ivy1.7
 
 #TODO: Prove validity!
+#implement shim.vote_handler.handle in the protocol isolate
+#call shim.broadcast from protocol isolate
 
-include order
+#include order
+include test
+include network_shim_tcp 
 
-instance node : iterable
-type value
-type quorum
-instance round : unbounded_sequence
+#instance node : iterable
+#type value
+#type quorum
+#instance round : unbounded_sequence
 
 relation member(N:node, Q:quorum)
 trusted isolate quorum_intersection = {
@@ -47,8 +51,9 @@ isolate abs = {
 
     action cast_vote(n:node, v:value, r:round) = {
         require ~left_rnd(n,r);
+	#action propose for round r and value v has been executed
         require proposal(r, v);
-        vote(n, r, v) := true
+        vote(n, r, v) := true;
     }
 
     action decide(n:node, r:round, v:value, q:quorum) = {
@@ -89,12 +94,16 @@ isolate protocol = {
 
     relation one_a(R:round)
     relation one_b(N:node, R:round, MAXR:round, MAXV:value)
-    individual current_round(N:node) : round
+    individual current_round(N:node) : round #maps node to a round (initialized to 0 for all N under after init)
     relation proposal(R:round, V:value)
     relation vote(N:node, R:round, V:value)
     relation decision(N:node, R:round, V:value)
 
-    # broadcast messages:
+    #actions implemented at the end
+    action send_1b(n:node, r:round, maxr:round, maxv:value)
+    action send_1a(r:round)
+    action cast_vote(n:node, v:value, r:round)
+    # broadcast messages: should this relation be true on broadcast?
     relation one_b_msg(N:node, R:round, MAXR:round, MAXV:value)
 
     # received messsages:
@@ -110,23 +119,10 @@ isolate protocol = {
         received_vote_msg(M,N,R,V) := false;
     }
 
-    action send_1a(r:round) = {
-        one_a(r) := true;
-    }
 
-    action send_1b(n:node, r:round, maxr:round, maxv:value) = {
-        assume current_round(n) < r;
-        assume one_a(r);
-        assume ((maxr = 0 & forall R,V. ~(R < r & vote(n,R,V))) |
-           (maxr ~= 0 & (maxr < r & vote(n,maxr,maxv)) &
-           (forall R,V. (R  < r & vote(n,R,V)) -> R <= maxr))
-        );
-        current_round(n) := r;
-        one_b_msg(n,r,maxr,maxv) := true;
-        call abs.join_round(n,r)
-    }
     action propose(r:round, q:quorum, maxr:round, v:value) = {
         assume ~proposal(r,V);
+	#has been broadcasted if all N are in q
         assume forall N. member(N, q) -> exists MAXR,V. one_b_msg(N,r,MAXR,V);
 
         # find the maximal vote in the quorum
@@ -139,12 +135,6 @@ isolate protocol = {
         call abs.propose(r, q, maxr, v)
     }
 
-    action cast_vote(n:node, v:value, r:round) = {
-        assume current_round(n) = r;
-        assume proposal(r, v);
-        vote(n, r, v) := true;
-        call abs.cast_vote(n, v, r)
-    }
 
     action receive_vote_msg(m:node, n:node, r:round, v:value) = {
         assume vote(n,r,v);
@@ -156,6 +146,42 @@ isolate protocol = {
         decision(n, r, v) := true;
         call abs.decide(n, r, v, q)
     }
+
+    implement shim.vote_handler.handle {
+                 call cast_vote(dst,m.m_value,m.m_round)
+     }
+
+        implement cast_vote {
+                assume current_round(n) = r;
+                assume proposal(r, v);
+                vote(n, r, v) := true;
+                call abs.cast_vote(n, v, r)
+        }
+
+        implement send_1a {
+                one_a(r) := true;
+        }
+
+        implement send_1b {
+                assume current_round(n) < r; #current round of node n is less than r
+                assume one_a(r);
+                assume ((maxr = 0 & forall R,V. ~(R < r & vote(n,R,V))) |
+                (maxr ~= 0 & (maxr < r & vote(n,maxr,maxv)) &
+                (forall R,V. (R  < r & vote(n,R,V)) -> R <= maxr))
+                );
+                current_round(n) := r;
+                #broadcast here ?
+                #fill the message fields
+                var m : msg;
+                m.m_kind := msg_kind.vote;
+                m.m_round := r;
+                m.m_value := maxv;
+                #call the functions
+                call shim.broadcast(n,m);
+                one_b_msg(n,r,maxr,maxv) := true;
+                call abs.join_round(n,r)
+       }
+
 
     export send_1a
     export send_1b
@@ -181,10 +207,10 @@ isolate protocol = {
         conjecture vote(N,R,V) <-> abs.vote(N,R,V)
         conjecture decision(N,R,V) <-> abs.decision(N,R,V)
         conjecture proposal(R,V) <-> abs.proposal(R,V)
-        conjecture one_b_msg(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R
+        conjecture one_b_msg(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R #current round greatest?
         conjecture one_b_msg(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
         conjecture one_b_msg(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
-        conjecture one_b_msg(N,R,MAXR,V) -> MAXR < R
+        conjecture one_b_msg(N,R,MAXR,V) -> MAXR < R #R is largest
     }
 
 } with abs, round, quorum_intersection
