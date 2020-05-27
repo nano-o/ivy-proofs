@@ -95,13 +95,14 @@ isolate protocol = {
     relation one_a(R:round)
     relation one_b(N:node, R:round, MAXR:round, MAXV:value)
     individual current_round(N:node) : round #maps node to a round (initialized to 0 for all N under after init)
+    function leader(R:round) : node
     relation proposal(R:round, V:value)
     relation vote(N:node, R:round, V:value)
     relation decision(N:node, R:round, V:value)
 
     #actions implemented at the end
     action send_1b(n:node, r:round, maxr:round, maxv:value)
-    action send_1a(r:round)
+    action send_1a(r:round, n:node)
     action cast_vote(n:node, v:value, r:round)
     # broadcast messages: should this relation be true on broadcast?
     relation one_b_msg(N:node, R:round, MAXR:round, MAXV:value)
@@ -120,7 +121,8 @@ isolate protocol = {
     }
 
 
-    action propose(r:round, q:quorum, maxr:round, v:value) = {
+    action propose(r:round, q:quorum, maxr:round, v:value, n:node) = {
+	assume leader(r) = n;
         assume ~proposal(r,V);
 	#has been broadcasted if all N are in q
         assume forall N. member(N, q) -> exists MAXR,V. one_b_msg(N,r,MAXR,V);
@@ -147,9 +149,25 @@ isolate protocol = {
         call abs.decide(n, r, v, q)
     }
 
-    implement shim.vote_handler.handle {
+
+    implement shim.proposal_handler.handle {
 		assume vote(m.m_sender,m.m_round,m.m_value);
 		received_vote_msg(dst,m.m_sender,m.m_round,m.m_value) := true;
+     }
+
+     implement shim.vote_handler.handle {
+                assume vote(m.m_sender,m.m_round,m.m_value);
+                received_vote_msg(dst,m.m_sender,m.m_round,m.m_value) := true;
+     }
+
+     implement shim.onea_handler.handle {
+                assume vote(m.m_sender,m.m_round,m.m_value);
+                received_vote_msg(dst,m.m_sender,m.m_round,m.m_value) := true;
+     }
+
+     implement shim.oneb_handler.handle {
+                assume vote(m.m_sender,m.m_round,m.m_value);
+                received_vote_msg(dst,m.m_sender,m.m_round,m.m_value) := true;
      }
 
      implement cast_vote {
@@ -167,6 +185,7 @@ isolate protocol = {
      }
 
      implement send_1a {
+		assume leader(r) = n;
                 one_a(r) := true;
      }
 

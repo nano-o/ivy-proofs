@@ -65,6 +65,12 @@ isolate shim = {
             else if m.m_kind = msg_kind.vote {
                 call vote_handler.handle(dst,m)
             }
+	    else if m.m_kind = msg_kind.one_a {
+                call onea_handler.handle(dst,m)
+            }
+	    else if m.m_kind = msg_kind.one_b {
+                call oneb_handler.handle(dst,m)
+            }
         }
 
         implement broadcast { # broadcast sends to all nodes, including the sender.
