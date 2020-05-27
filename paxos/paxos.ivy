@@ -148,21 +148,29 @@ isolate protocol = {
     }
 
     implement shim.vote_handler.handle {
-                 call cast_vote(dst,m.m_value,m.m_round)
+		assume vote(m.m_sender,m.m_round,m.m_value);
+		received_vote_msg(dst,m.m_sender,m.m_round,m.m_value) := true;
      }
 
-        implement cast_vote {
+     implement cast_vote {
                 assume current_round(n) = r;
                 assume proposal(r, v);
                 vote(n, r, v) := true;
-                call abs.cast_vote(n, v, r)
-        }
+                call abs.cast_vote(n, v, r);
+		var m : msg;
+                m.m_kind := msg_kind.vote;
+                m.m_round := r;
+                m.m_value := v;
+		m.m_sender := n;
+                #call the functions
+                call shim.broadcast(n,m);
+     }
 
-        implement send_1a {
+     implement send_1a {
                 one_a(r) := true;
-        }
+     }
 
-        implement send_1b {
+     implement send_1b {
                 assume current_round(n) < r; #current round of node n is less than r
                 assume one_a(r);
                 assume ((maxr = 0 & forall R,V. ~(R < r & vote(n,R,V))) |
@@ -176,11 +184,12 @@ isolate protocol = {
                 m.m_kind := msg_kind.vote;
                 m.m_round := r;
                 m.m_value := maxv;
+		m.m_sender := n;
                 #call the functions
                 call shim.broadcast(n,m);
                 one_b_msg(n,r,maxr,maxv) := true;
                 call abs.join_round(n,r)
-       }
+     }
 
 
     export send_1a

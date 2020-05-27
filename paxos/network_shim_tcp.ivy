@@ -12,7 +12,8 @@ object msg = {
     type this = struct {
         m_kind : msg_kind,
         m_round : round,
-        m_value : value
+        m_value : value,
+	m_sender : node
         # TODO: we'll need more fields here
     }
 }
