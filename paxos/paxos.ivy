@@ -102,7 +102,7 @@ isolate protocol = {
 
     #actions implemented at the end
     action send_1b(n:node, r:round, maxr:round, maxv:value)
-    action send_1a(r:round, n:node)
+    action send_1a(r:round, n:node, v:value)
     action cast_vote(n:node, v:value, r:round)
     # broadcast messages: should this relation be true on broadcast?
     relation one_b_msg(N:node, R:round, MAXR:round, MAXV:value)
@@ -121,6 +121,7 @@ isolate protocol = {
     }
 
 
+
     action propose(r:round, q:quorum, maxr:round, v:value, n:node) = {
 	assume leader(r) = n;
         assume ~proposal(r,V);
@@ -134,6 +135,13 @@ isolate protocol = {
            (forall N,R,V. (member(N, q) & R  < r & one_b_msg(N,r,R,V)) -> R <= maxr))
         );
         proposal(r, v) := true;
+	var m : msg;
+        m.m_kind := msg_kind.proposal;
+        m.m_round := r;
+        m.m_value := v;
+        m.m_sender := n;
+        #call the functions
+        call shim.broadcast(n,m);
         call abs.propose(r, q, maxr, v)
     }
 
@@ -187,6 +195,13 @@ isolate protocol = {
      implement send_1a {
 		assume leader(r) = n;
                 one_a(r) := true;
+		var m : msg;
+                m.m_kind := msg_kind.one_a;
+                m.m_round := r;
+                m.m_value := v;
+                m.m_sender := n;
+                #call the functions
+                call shim.broadcast(n,m);
      }
 
      implement send_1b {
@@ -200,7 +215,7 @@ isolate protocol = {
                 #broadcast here ?
                 #fill the message fields
                 var m : msg;
-                m.m_kind := msg_kind.vote;
+                m.m_kind := msg_kind.one_b;
                 m.m_round := r;
                 m.m_value := maxv;
 		m.m_sender := n;
