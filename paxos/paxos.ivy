@@ -102,7 +102,7 @@ isolate protocol = {
 
     #actions implemented at the end
     action send_1b(n:node, r:round, maxr:round, maxv:value)
-    action send_1a(r:round, n:node, v:value)
+    action send_1a(r:round, n:node)
     action cast_vote(n:node, v:value, r:round)
     # broadcast messages: should this relation be true on broadcast?
     relation one_b_msg(N:node, R:round, MAXR:round, MAXV:value)
@@ -198,7 +198,6 @@ isolate protocol = {
 		var m : msg;
                 m.m_kind := msg_kind.one_a;
                 m.m_round := r;
-                m.m_value := v;
                 m.m_sender := n;
                 #call the functions
                 call shim.broadcast(n,m);
@@ -217,7 +216,8 @@ isolate protocol = {
                 var m : msg;
                 m.m_kind := msg_kind.one_b;
                 m.m_round := r;
-                m.m_value := maxv;
+		m.max_round := maxr;
+		m.m_value := maxv;
 		m.m_sender := n;
                 #call the functions
                 call shim.broadcast(n,m);
