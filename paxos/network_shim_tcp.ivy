@@ -29,7 +29,7 @@ isolate shim = {
         action handle(dst:node,m:msg)
         object spec = {
             before handle {
-		#net.send is executed
+		#broadcast is executed
                 assert sent(m,dst) & m.m_kind = p_kind
             }
         }
