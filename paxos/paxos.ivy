@@ -109,6 +109,7 @@ isolate protocol = {
 
     # received messsages:
     relation received_vote_msg(M:node, N:node, R:round, V:value)
+    relation received_one_b_msg(N:node,R:round,MAXR:round,V:value)
 
     after init {
         one_a(R) := false;
@@ -118,6 +119,7 @@ isolate protocol = {
         vote(N,R,V) := false;
         decision(N,R,V) := false;
         received_vote_msg(M,N,R,V) := false;
+	received_one_b_msg(N,R,MAXR,V) := false;
     }
 
 
@@ -127,14 +129,22 @@ isolate protocol = {
         assume ~proposal(r,V);
 	#net.sent(M,D) M : msg, D : node
 	#has been broadcasted if all N are in q
-        assume forall N. member(N, q) -> exists M. net.sent(M,N);
+        #assume forall N. member(N, q) -> received_one_b_msg(N);
 
         # find the maximal vote in the quorum
         # here, compared to the protocol isolate, the leader uses the contents of the one_b messages instead of the vote relation
-        assume ((forall N. member(N, q) -> exists M. net.sent(M,N)) | (
-          (exists N,M. member(N, q) & maxr < r & net.sent(M,N)) &
-          (forall N,R,M. (member(N, q) & R  < r & net.sent(M,N)) -> R <= maxr))
+        #assume ((forall N. member(N, q) -> received_one_b_msg(N)) | (
+         # (exists N. member(N, q) & maxr < r & received_one_b_msg(N)) &
+         # (forall N,R. (member(N, q) & R  < r & received_one_b_msg(N)) -> R <= maxr))
+        #);
+        assume forall N. member(N, q) -> exists MAXR,V. received_one_b_msg(N,r,MAXR,V);
+        # find the maximal vote in the quorum
+        # here, compared to the protocol isolate, the leader uses the contents of the one_b messages instead of the vote relation
+        assume ((forall N. member(N, q) -> exists V . received_one_b_msg(N,r,0,V)) | (
+           (exists N. member(N, q) & maxr < r & received_one_b_msg(N,r,maxr,v)) &
+           (forall N,R,V. (member(N, q) & R  < r & received_one_b_msg(N,r,R,V)) -> R <= maxr))
         );
+
         proposal(r, v) := true;
 	var m : msg;
         m.m_kind := msg_kind.proposal;
@@ -176,6 +186,7 @@ isolate protocol = {
 
      implement shim.oneb_handler.handle {
                 assume vote(m.m_sender,m.m_round,m.m_value);
+		received_one_b_msg(m.m_sender,m.m_round,m.max_round,m.m_value) := true;
                 received_vote_msg(dst,m.m_sender,m.m_round,m.m_value) := true;
      }
 
@@ -244,6 +255,7 @@ isolate protocol = {
 	conjecture decision(N,R,V) -> proposal(R,V)
 	#added the conjecture on recived vote msg and vote
 	conjecture received_vote_msg(M,N,R,V) -> vote(N,R,V)
+	conjecture received_one_b_msg(N,R,MAXR,V) -> vote(N,R,V)
     }
 
     private {
@@ -252,10 +264,17 @@ isolate protocol = {
         conjecture vote(N,R,V) <-> abs.vote(N,R,V)
         conjecture decision(N,R,V) <-> abs.decision(N,R,V)
         conjecture proposal(R,V) <-> abs.proposal(R,V)
-        conjecture net.sent(M,N) & msg.m_round(M) = R & current_round(N) = R2 -> R2 >= R #current round greatest?
-        conjecture net.sent(M,N) & msg.m_round(M) = R & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
-        conjecture net.sent(M,N) & msg.m_round(M) = R & R2 < R -> ~abs.vote(N,R2,V2)
-        conjecture net.sent(M,N) & msg.m_round(M) = MAXR -> forall R. MAXR < R #R is largest
+	#one_b_msg(N,R,MAXR,V)
+	conjecture received_one_b_msg(N,R,MAXR,V) &  current_round(N) = R2 -> R2 >= R #current round greatest?
+        conjecture received_one_b_msg(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
+        conjecture received_one_b_msg(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
+        conjecture received_one_b_msg(N,R,MAXR,V) -> MAXR < R #R is largest
+	#conjecture vote(N,R,V) -> net.sent(M,N)
+        #conjecture received_one_b_msg(N) -> net.sent(M,N)
+        #conjecture net.sent(M,N) & msg.m_round(M) = R & current_round(N) = R2 -> R2 >= R #current round greatest?
+        #conjecture net.sent(M,N) & msg.m_round(M) = R & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
+        #conjecture net.sent(M,N) & msg.m_round(M) = R & R2 < R -> ~abs.vote(N,R2,V2)
+        #conjecture net.sent(M,N) & msg.m_round(M) = R  -> forall MAXR. MAXR < R #R is largest
     }
 
 } with net, abs, round, quorum_intersection
