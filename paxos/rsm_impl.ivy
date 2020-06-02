@@ -1,5 +1,7 @@
 #lang ivy1.7
 
+# Goal: implement a replicated state-machine (RSM) based on Paxos
+
 include order
 
 type value_t
@@ -14,9 +16,9 @@ object value_opt_t = {
 
 
 object service_interface = {
-    export action propose(v:value_t)
-    action notify_decision(i:inst_t, v:value_t)
-    export action query(i:inst_t) returns (v:value_opt_t)
+    export action propose(v:value_t) # the environment, i.e. a client application, calls this
+    import action notify_decision(i:inst_t, v:value_t) # this is a call out to the environement
+    export action query(i:inst_t) returns (v:value_opt_t) # the environment, i.e. a client application, calls this
     specification {
         relation proposed(V:value_t)
         relation log(I:inst_t,V:value_t)
@@ -47,3 +49,5 @@ object service_implementation = {
 interpret value_t -> strlit
 
 extract impl = service_implementation, inst_t
+
+# generate and compile with `ivyc isolate=impl rsm_impl.ivy`
