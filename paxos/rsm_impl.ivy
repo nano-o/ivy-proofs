@@ -1,0 +1,49 @@
+#lang ivy1.7
+
+include order
+
+type value_t
+instance inst_t: unbounded_sequence
+
+object value_opt_t = {
+    type this = struct {
+        present : bool,
+        value : value_t
+    }
+}
+
+
+object service_interface = {
+    export action propose(v:value_t)
+    action notify_decision(i:inst_t, v:value_t)
+    export action query(i:inst_t) returns (v:value_opt_t)
+    specification {
+        relation proposed(V:value_t)
+        relation log(I:inst_t,V:value_t)
+        invariant log(I,V1) & log(I,V2) -> V1 = V2
+        before notify_decision {
+            ensure proposed(v);
+            ensure log(i,V) -> V = v;
+            log(i,v) := true;
+        }
+        after query {
+            ensure v.present -> log(i,v.value);
+        }
+    }
+}
+
+object service_implementation = {
+# TODO: use an array to implement the log
+    implement service_interface.propose(v:value_t) {
+#TODO
+    }
+
+    implement service_interface.query(i:inst_t) {
+# TODO
+    }
+}
+
+# interpret values as strings:
+interpret value_t -> strlit
+
+extract impl = service_implementation, inst_t
