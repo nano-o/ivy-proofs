@@ -4,7 +4,6 @@
 
 include order
 include collections
-include set_adt
 
 type value_t
 instance inst_t: unbounded_sequence
@@ -38,29 +37,26 @@ object service_interface = {
 
 object service_implementation = {
 # TODO: use an array to implement the log
-    instance s : set(inst_t,value_t)
-    individual my_set:s
+    instance arr:array(inst_t,value_t)
+    individual my_set:arr
     after init
     {
-	my_set := s.emptyset();
+	my_set := arr.create(0,0);
     }
     implement service_interface.propose(v:value_t) {
-	if ~s.member(v,my_set)
-        {
-              my_set := s.add(my_set,v);
-	      call service_interface.notify_decision(s.getend(my_set),v) 
-        }
-
+	my_set := my_set.resize(my_set.end + 1,0);
+	my_set := my_set.set(my_set.end,v);
+	call service_interface.notify_decision(my_set.end,v);	
     }
 
     implement service_interface.query(i:inst_t) {
-	if i > s.getend(my_set)
+	if i > my_set.end
 	{
-		v.present := false;
+	    v.present := false;
 	}
 	else
 	{
-		v.value := s.getvalueatind(my_set,i);	
+	     v.value := my_set.get(i);
 	}
     }
 }
