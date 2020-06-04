@@ -48,6 +48,7 @@ object service_implementation = {
 	if ~s.member(v,my_set)
         {
               my_set := s.add(my_set,v);
+	      call service_interface.notify_decision(s.getend(my_set),v) 
         }
 
     }
