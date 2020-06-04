@@ -3,6 +3,8 @@
 # Goal: implement a replicated state-machine (RSM) based on Paxos
 
 include order
+include collections
+include set_adt
 
 type value_t
 instance inst_t: unbounded_sequence
@@ -36,12 +38,29 @@ object service_interface = {
 
 object service_implementation = {
 # TODO: use an array to implement the log
+    instance s : set(inst_t,value_t)
+    individual my_set:s
+    after init
+    {
+	my_set := s.emptyset();
+    }
     implement service_interface.propose(v:value_t) {
-#TODO
+	if ~s.member(v,my_set)
+        {
+              my_set := s.add(my_set,v);
+        }
+
     }
 
     implement service_interface.query(i:inst_t) {
-# TODO
+	if i > s.getend(my_set)
+	{
+		v.present := false;
+	}
+	else
+	{
+		v.value := s.getvalueatind(my_set,i);	
+	}
     }
 }
 
