@@ -23,7 +23,7 @@ object service_interface = {
     specification {
         relation proposed(V:value_t)
         relation log(I:inst_t,V:value_t)
-        invariant log(I,V1) & log(I,V2) -> V1 = V2
+        invariant log(I,V1) & log(I,V2) -> V1 = V2 #an instruction cannot have more than one distinct value
         before notify_decision {
             ensure proposed(v);
             ensure log(i,V) -> V = v;
@@ -45,7 +45,7 @@ object service_implementation = {
     }
     implement service_interface.propose(v:value_t) {
 	var i := my_set.end;
-	my_set := arr.resize(my_set,i + 1,0);
+	my_set := arr.resize(my_set,i.next,0);
 	my_set := arr.set(my_set,i,v);
 	call service_interface.notify_decision(i,v);	
     }
