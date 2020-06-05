@@ -41,16 +41,17 @@ object service_implementation = {
     individual my_set:arr
     after init
     {
-	my_set := arr.create(0,0);
+	my_set := arr.empty();
     }
     implement service_interface.propose(v:value_t) {
-	my_set := my_set.resize(my_set.end + 1,0);
-	my_set := my_set.set(my_set.end,v);
-	call service_interface.notify_decision(my_set.end,v);	
+	var i := my_set.end;
+	my_set := arr.resize(my_set,i + 1,0);
+	my_set := arr.set(my_set,i,v);
+	call service_interface.notify_decision(i,v);	
     }
 
     implement service_interface.query(i:inst_t) {
-	if i > my_set.end
+	if i >= my_set.end
 	{
 	    v.present := false;
 	}
