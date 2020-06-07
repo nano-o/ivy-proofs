@@ -38,26 +38,26 @@ object service_interface = {
 object service_implementation = {
 # TODO: use an array to implement the log
     instance arr:array(inst_t,value_t)
-    individual my_set:arr
+    individual my_log:arr
     after init
     {
-	my_set := arr.empty();
+	my_log := arr.empty();
     }
     implement service_interface.propose(v:value_t) {
-	var i := my_set.end;
-	my_set := arr.resize(my_set,i.next,0);
-	my_set := arr.set(my_set,i,v);
+	var i := my_log.end;
+	#my_set := arr.resize(my_set,i.next,0);
+	my_log := arr.append(my_log,v);
 	call service_interface.notify_decision(i,v);	
     }
 
     implement service_interface.query(i:inst_t) {
-	if i >= my_set.end
+	if i >= my_log.end
 	{
 	    v.present := false;
 	}
 	else
 	{
-	     v.value := my_set.get(i);
+	     v.value := my_log.get(i);
 	}
     }
 }
