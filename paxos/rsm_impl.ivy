@@ -24,6 +24,9 @@ object service_interface = {
         relation proposed(V:value_t)
         relation log(I:inst_t,V:value_t)
         invariant log(I,V1) & log(I,V2) -> V1 = V2 #an instruction cannot have more than one distinct value
+	after init {
+		log(I,V) := false;
+	}
         before notify_decision {
             ensure proposed(v);
             ensure log(i,V) -> V = v;
