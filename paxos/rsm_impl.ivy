@@ -36,6 +36,7 @@ object service_interface = {
             ensure v.present -> log(i,v.value);
         }
     }
+    isolate iso = this
 }
 
 object service_implementation = {
@@ -63,6 +64,7 @@ object service_implementation = {
 	     v.value := my_log.get(i);
 	}
     }
+    isolate iso = this with service_interface, inst_t
 }
 
 # interpret values as strings:
