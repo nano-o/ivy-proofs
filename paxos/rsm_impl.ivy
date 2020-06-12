@@ -23,8 +23,9 @@ object service_interface = {
     specification {
         relation proposed(V:value_t)
         relation log(I:inst_t,V:value_t)
+	relation member_log(I:inst_t,V:value_t)
         invariant log(I,V1) & log(I,V2) -> V1 = V2 #an instruction cannot have more than one distinct value
-	invariant log(I,V) -> proposed(V)
+	invariant ~log(service_implementation.my_log.end ,V)
 	after init {
 		proposed(V) := false;
 		log(I,V) := false;
@@ -34,7 +35,7 @@ object service_interface = {
             require log(i,V) -> V = v;
             log(i,v) := true;
         }
-	after propose {
+	before propose {
 	    proposed(v) := true;
 	}
         after query {
@@ -54,9 +55,7 @@ object service_implementation = {
     }
     implement service_interface.propose(v:value_t) {
 	var i := my_log.end;
-	#my_set := arr.resize(my_set,i.next,0);
 	my_log := arr.append(my_log,v);
-	#var i := my_log.end;
 	call service_interface.notify_decision(i,v);	
     }
 
@@ -69,7 +68,7 @@ object service_implementation = {
 	{
 	     #v.present := true;
 	     v.value := my_log.get(i);
-	     call service_interface.notify_decision(i,v.value);
+	     #call service_interface.notify_decision(i,v.value);
 	}
     }
     isolate iso = this with service_interface, inst_t
