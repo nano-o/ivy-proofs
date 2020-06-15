@@ -25,7 +25,6 @@ object service_interface = {
         relation log(I:inst_t,V:value_t)
         invariant log(I,V1) & log(I,V2) -> V1 = V2 #an instruction cannot have more than one distinct value
 	invariant ~log(service_implementation.my_log.end ,V)
-	invariant (service_implementation.my_log.value(I) = V) -> log(I,V)
 	after init {
 		proposed(V) := false;
 		log(I,V) := false;
@@ -42,7 +41,7 @@ object service_interface = {
             ensure v.present -> log(i,v.value);
         }
     }
-    isolate iso = this
+    isolate iso = this 
 }
 
 object service_implementation = {
@@ -71,7 +70,8 @@ object service_implementation = {
 	     #call service_interface.notify_decision(i,v.value);
 	}
     }
-    isolate iso = this with service_interface, inst_t
+    invariant (my_log.value(I) = V) -> service_interface.log(I,V)
+    isolate iso = this with service_interface, inst_t, arr
 }
 
 # interpret values as strings:
