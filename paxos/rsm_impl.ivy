@@ -64,14 +64,11 @@ object service_implementation = {
 	}
 	else
 	{
-	     #v.present := true;
 	     v.value := my_log.get(i);
-	     #call service_interface.notify_decision(i,v.value);
 	}
     }
-    #invariant service_interface.log(arr.end(my_log) ,V) -> ~((I = my_log) | service_interface.log(arr.end(I) ,V))
-    invariant (my_log.value(I) = V) -> (I < my_log.end)
-    invariant ((my_log.value(I) = V) & (I < my_log.end)) -> service_interface.log(I,V)
+    invariant (service_interface.proposed(V) & (my_log.value(I) = V) & (I < my_log.end)) <->  service_interface.log(I,V)
+    invariant ((my_log.value(I) = V) & (I < my_log.end)) <-> service_interface.log(I,V)
     isolate iso = this with service_interface, inst_t, arr
 }
 
