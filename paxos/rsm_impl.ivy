@@ -44,34 +44,33 @@ object service_interface(n : node) = {
     isolate iso = this 
 }
 
-#object service_implementation = {
-# TODO: use an array to implement the log
-#    instance arr:array(inst_t,value_t)
-#    individual my_log:arr
-#    after init
-#    {
-#	my_log := arr.empty();
-#    }
-#    implement service_interface.propose(v:value_t) {
-#	var i := my_log.end;
-#	my_log := my_log.append(v);
-#	call service_interface.notify_decision(i,v);	
-#    }
-#
-#    implement service_interface.query(i:inst_t) {
-#	if i >= my_log.end
-#	{
-#	    v.present := false;
-#	}
-#	else
-#	{
-#	     v.value := my_log.get(i);
-#	}
-#    }
-#    invariant (service_interface.proposed(V) & (my_log.value(I) = V) & (I < my_log.end)) <->  service_interface.log(I,V)
-#    invariant ((my_log.value(I) = V) & (I < my_log.end)) <-> service_interface.log(I,V)
-#    isolate iso = this with service_interface, inst_t, arr
-#}
+object service_implementation(n : node) = {
+    instance arr:array(inst_t,value_t)
+    individual my_log:arr
+    after init
+    {
+	my_log := arr.empty();
+    }
+    implement service_interface.propose(v:value_t) {
+	var i := arr.end(my_log);
+	my_log := arr.append(my_log,v);
+	call service_interface.notify_decision(n,i,v);	
+    }
+
+    implement service_interface.query(i:inst_t) {
+	if i >= arr.end(my_log)
+	{
+	    v.present := false;
+	}
+	else
+	{
+	     v.value := arr.get(my_log,i);
+	}
+    }
+    invariant (service_interface.proposed(n,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(n,I,V)
+    invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(n,I,V)
+    isolate iso = this with service_interface, inst_t, arr
+}
 
 # interpret values as strings:
 interpret value_t -> strlit
