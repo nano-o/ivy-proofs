@@ -76,6 +76,6 @@ object service_implementation(n : node) = {
 # interpret values as strings:
 interpret value_t -> strlit
 
-extract impl = service_implementation, inst_t
+extract impl = service_implementation, inst_t, arr
 
 # generate and compile with `ivyc isolate=impl rsm_impl.ivy`
