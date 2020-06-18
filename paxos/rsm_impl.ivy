@@ -44,8 +44,9 @@ object service_interface(n : node) = {
     isolate iso = this 
 }
 
+instance arr:array(inst_t,value_t)
+
 object service_implementation(n : node) = {
-    instance arr:array(inst_t,value_t)
     individual my_log:arr
     after init
     {
@@ -69,7 +70,7 @@ object service_implementation(n : node) = {
     }
     invariant (service_interface.proposed(n,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(n,I,V)
     invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(n,I,V)
-    isolate iso = this with service_interface, inst_t, arr
+    isolate iso = this with service_interface(n), inst_t, arr
 }
 
 # interpret values as strings:
