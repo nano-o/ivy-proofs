@@ -3,6 +3,7 @@
 # Goal: implement a replicated state-machine (RSM) based on Paxos
 
 include order
+include tcp
 include collections
 
 type value_t
@@ -16,6 +17,21 @@ object value_opt_t = {
 }
 
 instance node : iterable
+parameter leader : node
+
+object msg_kind = {
+    type this = {propose_msg, decision_msg}
+}
+
+object msg = {
+    type this = struct {
+        m_kind : msg_kind,
+        m_value : value_t,
+        m_index : inst_t
+    }
+}
+
+instance net : simple_tcp(node,msg)
 
 object service_interface(n : node) = {
     export action propose(v:value_t) # the environment, i.e. a client application, calls this
@@ -53,11 +69,33 @@ object service_implementation(n : node) = {
 	my_log := arr.empty();
     }
     implement service_interface.propose(v:value_t) {
-	var i := arr.end(my_log);
-	my_log := arr.append(my_log,v);
-	call service_interface.notify_decision(n,i,v);	
+	var m : msg;
+        m.m_kind := msg_kind.propose_msg;
+        m.m_value := v;
+	call net.send(n,leader,m);
     }
 
+    implement net.recv(m:msg) {
+	if m.m_kind = msg_kind.propose_msg {
+		var i := arr.end(my_log);
+       		my_log := arr.append(my_log,m.m_value);
+		var mb : msg;
+       		mb.m_kind := msg_kind.decision_msg;
+       		mb.m_value := m.m_value;
+		mb.m_index := i;
+		var iter := node.iter.create(0);
+            	while ~iter.is_end
+            	{
+                	var n := iter.val;
+                	call net.send(leader,n,mb);
+               		iter := iter.next;
+            	}
+	}
+	else {
+		my_log := arr.set(my_log,m.m_index,m.m_value);
+		call service_interface.notify_decision(n,m.m_index,m.m_value);
+	}
+    }
     implement service_interface.query(i:inst_t) {
 	if i >= arr.end(my_log)
 	{
