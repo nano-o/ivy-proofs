@@ -108,9 +108,9 @@ object service_implementation(n : node) = {
     }
     invariant (service_interface.proposed(n,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(n,I,V)
     invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(n,I,V)
-    isolate iso = this with service_interface(n), inst_t, arr, net, node
+    #isolate iso = this with service_interface(n), inst_t, arr, net(n), node
 }
-
+isolate implementation_iso = this with service_interface, inst_t, arr, net, node
 # interpret values as strings:
 interpret value_t -> strlit
 
