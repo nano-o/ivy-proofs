@@ -92,10 +92,8 @@ object service_implementation(n : node) = {
             	}
 	}
 	else {
-		if m.m_index < arr.end(my_log) {
-		my_log := arr.set(my_log,m.m_index,m.m_value);
+		my_log := arr.resize(my_log,m.m_index + 1,m.m_value);
 		call service_interface.notify_decision(n,m.m_index,m.m_value);
-		}
 	}
     }
     implement service_interface.query(i:inst_t) {
@@ -115,6 +113,6 @@ isolate implementation_iso = this with service_interface, inst_t, arr, net, node
 # interpret values as strings:
 interpret value_t -> strlit
 
-extract impl = service_implementation, inst_t, arr
+extract impl = service_implementation, inst_t, arr, node
 
 # generate and compile with `ivyc isolate=impl rsm_impl.ivy`
