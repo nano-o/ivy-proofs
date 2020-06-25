@@ -113,6 +113,6 @@ isolate implementation_iso = this with service_interface, inst_t, arr, net, node
 # interpret values as strings:
 interpret value_t -> strlit
 
-extract impl = service_implementation, inst_t, arr, node
+extract impl(n : node) = service_implementation(n), inst_t, arr, node
 
 # generate and compile with `ivyc isolate=impl rsm_impl.ivy`
