@@ -62,7 +62,7 @@ object service_interface(n : node) = {
 
 instance arr:array(inst_t,value_t)
 
-object service_implementation(n : node) = {
+object service_implementation(self : node) = {
     individual my_log:arr
     after init
     {
@@ -72,7 +72,7 @@ object service_implementation(n : node) = {
 	var m : msg;
         m.m_kind := msg_kind.propose_msg;
         m.m_value := v;
-	call net.send(n,leader,m);
+	call net.send(self,leader,m);
     }
 
     implement net.recv(m:msg) {
@@ -87,13 +87,13 @@ object service_implementation(n : node) = {
             	while ~iter.is_end
             	{
                 	var n := iter.val;
-                	call net.send(leader,n,mb);
+                	call net.send(self,n,mb);
                		iter := iter.next;
             	}
 	}
 	else {
 		my_log := arr.resize(my_log,m.m_index + 1,m.m_value);
-		call service_interface.notify_decision(n,m.m_index,m.m_value);
+		call service_interface.notify_decision(self,m.m_index,m.m_value);
 	}
     }
     implement service_interface.query(i:inst_t) {
@@ -106,13 +106,13 @@ object service_implementation(n : node) = {
 	     v.value := arr.get(my_log,i);
 	}
     }
-    invariant (service_interface.proposed(n,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(n,I,V)
-    invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(n,I,V)
+    invariant (service_interface.proposed(self,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(self,I,V)
+    invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(self,I,V)
 }
 isolate implementation_iso = this with service_interface, inst_t, arr, net, node
 # interpret values as strings:
 interpret value_t -> strlit
 
-extract impl(n : node) = service_implementation(n), inst_t, arr, node
+extract impl(n : node) = service_implementation(n), inst_t, arr, node, net(n)
 
 # generate and compile with `ivyc isolate=impl rsm_impl.ivy`
