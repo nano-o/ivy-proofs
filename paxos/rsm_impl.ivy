@@ -3,7 +3,8 @@
 # Goal: implement a replicated state-machine (RSM) based on Paxos
 
 include order
-include tcp
+#include tcp
+include udp
 include collections
 
 type value_t
@@ -31,7 +32,7 @@ object msg = {
     }
 }
 
-instance net : simple_tcp(node,msg)
+instance net : udp_simple(node,msg)
 
 object service_interface(n : node) = {
     export action propose(v:value_t) # the environment, i.e. a client application, calls this
