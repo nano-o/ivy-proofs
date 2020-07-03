@@ -3,8 +3,8 @@
 # Goal: implement a replicated state-machine (RSM) based on Paxos
 
 include order
-#include tcp
-include udp
+include timeout
+include tcp
 include collections
 
 type value_t
@@ -20,8 +20,9 @@ object value_opt_t = {
 instance node : iterable
 parameter leader : node
 
+
 object msg_kind = {
-    type this = {propose_msg, decision_msg}
+    type this = {propose_msg, decision_msg, ack_msg}
 }
 
 object msg = {
@@ -32,7 +33,7 @@ object msg = {
     }
 }
 
-instance net : udp_simple(node,msg)
+instance net : simple_tcp(node,msg)
 
 object service_interface(n : node) = {
     export action propose(v:value_t) # the environment, i.e. a client application, calls this
@@ -65,14 +66,18 @@ instance arr:array(inst_t,value_t)
 
 object service_implementation(self : node) = {
     individual my_log:arr
+    individual proposed_log:arr
+    instance timer : timeout_sec
     after init
     {
 	my_log := arr.empty();
+	proposed_log := arr.empty();
     }
     implement service_interface.propose(v:value_t) {
 	var m : msg;
         m.m_kind := msg_kind.propose_msg;
         m.m_value := v;
+	proposed_log := arr.append(proposed_log,v);
 	call net.send(self,leader,m);
     }
 
@@ -107,6 +112,28 @@ object service_implementation(self : node) = {
 	     v.value := arr.get(my_log,i);
 	}
     }
+    implement timer.timeout {
+	var idp : inst_t := 0;
+	while idp < proposed_log.end {
+		var idval := arr.get(proposed_log,idp);
+		var check : bool := false;
+		var idm : inst_t := 0;
+		while idm < my_log.end {
+			if arr.get(my_log,idm) = idval {
+				check := true;
+			}
+		};
+		if check = false {
+			var m : msg;
+        		m.m_kind := msg_kind.propose_msg;
+        		m.m_value := idval;
+        		call net.send(self,leader,m);
+
+		};		
+		idp := idp + 1;
+	}
+    }
+ 
     invariant (service_interface.proposed(self,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(self,I,V)
     invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(self,I,V)
 }
