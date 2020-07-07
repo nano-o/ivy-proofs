@@ -83,7 +83,7 @@ object service_implementation(self : node) = {
 
     implement net.recv(m:msg) {
 	if m.m_kind = msg_kind.propose_msg {
-		var i := arr.end(my_log);
+		var i := arr.end(my_log) - 1;
        		my_log := arr.append(my_log,m.m_value);
 		var mb : msg;
        		mb.m_kind := msg_kind.decision_msg;
@@ -121,7 +121,8 @@ object service_implementation(self : node) = {
 		while idm < my_log.end {
 			if arr.get(my_log,idm) = idval {
 				check := true;
-			}
+			};
+			idm := idm + 1;
 		};
 		if check = false {
 			var m : msg;
