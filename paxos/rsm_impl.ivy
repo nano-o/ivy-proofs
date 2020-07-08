@@ -133,6 +133,7 @@ object service_implementation(self : node) = {
 	}
 	else
 	{
+	     v.present := true;
 	     v.value := arr.get(my_log,i);
 	}
     }
