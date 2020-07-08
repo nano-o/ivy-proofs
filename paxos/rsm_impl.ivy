@@ -68,10 +68,11 @@ object service_implementation(self : node) = {
     individual my_log:arr
     individual proposed_log:arr
     instance timer : timeout_sec
+    import action my_debug_action(i:inst_t)
     after init
     {
-	my_log := arr.empty();
-	proposed_log := arr.empty();
+	my_log := arr.empty;
+	proposed_log := arr.empty;
     }
     implement service_interface.propose(v:value_t) {
 	var m : msg;
@@ -83,22 +84,45 @@ object service_implementation(self : node) = {
 
     implement net.recv(m:msg) {
 	if m.m_kind = msg_kind.propose_msg {
-		var i := arr.end(my_log) - 1;
-       		my_log := arr.append(my_log,m.m_value);
+		var j : inst_t := 0;
+		var i : inst_t := arr.end(my_log);
+		while j < arr.end(my_log) {
+			if arr.get(my_log,j) = m.m_value {
+				i := j;
+			};
+			j := j + 1;
+		};
+		call my_debug_action(i);
+		if i = arr.end(my_log) {
+       			my_log := arr.append(my_log,m.m_value);
+		};
 		var mb : msg;
        		mb.m_kind := msg_kind.decision_msg;
        		mb.m_value := m.m_value;
 		mb.m_index := i;
+		#call my_debug_action(mb.m_index);
 		var iter := node.iter.create(0);
             	while ~iter.is_end
             	{
                 	var n := iter.val;
-                	call net.send(self,n,mb);
+			if n ~= self {
+                		call net.send(self,n,mb);
+			};
                		iter := iter.next;
             	}
 	}
 	else {
-		my_log := arr.resize(my_log,m.m_index + 1,m.m_value);
+		var check : bool := false;
+		var i : inst_t := 0;
+		while i < arr.end(my_log) {
+			if arr.get(my_log,i) = m.m_value {
+				check := true;
+			};
+			i := i + 1;
+		};
+		if check = false {
+			my_log := arr.resize(my_log,m.m_index + 1,m.m_value);
+		};
 		call service_interface.notify_decision(self,m.m_index,m.m_value);
 	}
     }
