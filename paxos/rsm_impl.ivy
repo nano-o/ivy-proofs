@@ -69,6 +69,8 @@ object service_implementation(self : node) = {
     individual proposed_log:arr
     instance timer : timeout_sec
     import action my_debug_action(i:inst_t)
+    import action my_debug_value(v:value_t)
+    import action my_debug_node(n:node)
     after init
     {
 	my_log := arr.empty;
@@ -107,6 +109,8 @@ object service_implementation(self : node) = {
                 	var n := iter.val;
 			if n ~= self {
                 		call net.send(self,n,mb);
+				call my_debug_node(n);
+				call my_debug_value(mb.m_value);
 			};
                		iter := iter.next;
             	}
@@ -122,6 +126,7 @@ object service_implementation(self : node) = {
 		};
 		if check = false {
 			my_log := arr.resize(my_log,m.m_index + 1,m.m_value);
+			call my_debug_value(m.m_value);
 		};
 		call service_interface.notify_decision(self,m.m_index,m.m_value);
 	}
