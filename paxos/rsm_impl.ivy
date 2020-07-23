@@ -149,14 +149,14 @@ object service_implementation(self : node) = {
 		if check = false {
 			my_log := arr.resize(my_log,m.m_index + 1,m.m_value);
 			call my_debug_value(m.m_value);
-			#Construct ACK msg. send ACK to leader.
-			var ma : msg;
-			ma.m_kind := msg_kind.ack_msg;
-       			ma.m_value := m.m_value;
-			ma.m_node := self;
-        		call net.send(self,leader,ma);
 
 		};
+		#Construct ACK msg. send ACK to leader.
+		var ma : msg;
+                ma.m_kind := msg_kind.ack_msg;
+                ma.m_value := m.m_value;
+                ma.m_node := self;
+                call net.send(self,leader,ma);
 		call service_interface.notify_decision(self,m.m_index,m.m_value);
 	}
 	else if m.m_kind = msg_kind.ack_msg { #ack_msg to leader. Only leader can read as leader
@@ -252,7 +252,7 @@ object service_implementation(self : node) = {
 					};
                         		m.m_value := getele.val;
 					if m.m_kind = msg_kind.decision_msg {
-						#call my_debug_node(self); 
+						call my_debug_node(self); 
                         			call net.send(self,n,m);
 					}
 					else {
