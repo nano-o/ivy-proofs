@@ -167,6 +167,7 @@ object service_implementation(self : node) = {
 			getele := arr_ackmsg.get(ack_log,i);
 			if getele.val = m.m_value {
 				getele.node_reply := arr_ack.append(getele.node_reply,m.m_node);
+				ack_log := arr_ackmsg.set(ack_log,i,getele);
 				#can be seen from leader node. Leader has pushed the node
 				call my_debug_node(m.m_node);
 			};
@@ -213,6 +214,7 @@ object service_implementation(self : node) = {
 	while idp < arr_ackmsg.end(ack_log) {
                 var getele : ack_msg_type;
                 getele := arr_ackmsg.get(ack_log,idp);
+		#call my_debug_value(getele.val);
 	        var iter := node.iter.create(0);
                 while ~iter.is_end
                 {
@@ -222,6 +224,7 @@ object service_implementation(self : node) = {
 				var check : bool := true;
 				var idm : inst_t := 0;
 				while idm < getele.node_reply.end {
+					#call my_debug_node(n); 
 					if arr_ack.get(getele.node_reply,idm) = n {
 						check := false;
 					};
@@ -249,7 +252,7 @@ object service_implementation(self : node) = {
 					};
                         		m.m_value := getele.val;
 					if m.m_kind = msg_kind.decision_msg {
-						call my_debug_node(self); 
+						#call my_debug_node(self); 
                         			call net.send(self,n,m);
 					}
 					else {
