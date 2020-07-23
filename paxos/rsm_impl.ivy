@@ -9,6 +9,10 @@ include collections
 
 type value_t
 instance inst_t: unbounded_sequence
+instance node : iterable
+parameter leader : node
+instance arr:array(inst_t,value_t)
+instance arr_ack:array(inst_t,node)
 
 object value_opt_t = {
     type this = struct {
@@ -17,9 +21,16 @@ object value_opt_t = {
     }
 }
 
-instance node : iterable
-parameter leader : node
+#structure with two elements; 1st : node. 2nd array
 
+object ack_msg_type = { 
+    type this = struct {
+        val : value_t,
+        node_reply : arr_ack
+    }
+}
+
+instance arr_ackmsg:array(inst_t,ack_msg_type)
 
 object msg_kind = {
     type this = {propose_msg, decision_msg, ack_msg}
@@ -29,7 +40,8 @@ object msg = {
     type this = struct {
         m_kind : msg_kind,
         m_value : value_t,
-        m_index : inst_t
+        m_index : inst_t,
+	m_node : node
     }
 }
 
@@ -62,11 +74,12 @@ object service_interface(n : node) = {
     isolate iso = this 
 }
 
-instance arr:array(inst_t,value_t)
 
 object service_implementation(self : node) = {
+    
     individual my_log:arr
     individual proposed_log:arr
+    individual ack_log:arr_ackmsg
     instance timer : timeout_sec
     import action my_debug_action(i:inst_t)
     import action my_debug_value(v:value_t)
@@ -75,12 +88,21 @@ object service_implementation(self : node) = {
     {
 	my_log := arr.empty;
 	proposed_log := arr.empty;
+        ack_log := arr_ackmsg.empty;
     }
     implement service_interface.propose(v:value_t) {
 	var m : msg;
         m.m_kind := msg_kind.propose_msg;
         m.m_value := v;
 	proposed_log := arr.append(proposed_log,v);
+	if self = leader {
+		#fill up ack_log if proposal comes from leader
+		var mack:ack_msg_type;
+                mack.val := v;
+                mack.node_reply := arr_ack.empty;
+                ack_log := arr_ackmsg.append(ack_log,mack);
+
+	};
 	call net.send(self,leader,m);
     }
 
@@ -94,7 +116,7 @@ object service_implementation(self : node) = {
 			};
 			j := j + 1;
 		};
-		call my_debug_action(i);
+		#call my_debug_action(i);
 		if i = arr.end(my_log) {
        			my_log := arr.append(my_log,m.m_value);
 		};
@@ -109,13 +131,13 @@ object service_implementation(self : node) = {
                 	var n := iter.val;
 			if n ~= self {
                 		call net.send(self,n,mb);
-				call my_debug_node(n);
-				call my_debug_value(mb.m_value);
+				#call my_debug_node(n);
+				#call my_debug_value(mb.m_value);
 			};
                		iter := iter.next;
             	}
 	}
-	else {
+	else if m.m_kind = msg_kind.decision_msg {
 		var check : bool := false;
 		var i : inst_t := 0;
 		while i < arr.end(my_log) {
@@ -127,8 +149,30 @@ object service_implementation(self : node) = {
 		if check = false {
 			my_log := arr.resize(my_log,m.m_index + 1,m.m_value);
 			call my_debug_value(m.m_value);
+			#Construct ACK msg. send ACK to leader.
+			var ma : msg;
+			ma.m_kind := msg_kind.ack_msg;
+       			ma.m_value := m.m_value;
+			ma.m_node := self;
+        		call net.send(self,leader,ma);
+
 		};
 		call service_interface.notify_decision(self,m.m_index,m.m_value);
+	}
+	else if m.m_kind = msg_kind.ack_msg { #ack_msg to leader. Only leader can read as leader
+		call my_debug_value(m.m_value);
+		var i : inst_t := 0;
+		while i < arr_ackmsg.end(ack_log) {
+			var getele : ack_msg_type;
+			getele := arr_ackmsg.get(ack_log,i);
+			if getele.val = m.m_value {
+				getele.node_reply := arr_ack.append(getele.node_reply,m.m_node);
+				#can be seen from leader node. Leader has pushed the node
+				call my_debug_node(m.m_node);
+			};
+			i := i + 1;
+			
+		}
 	}
     }
     implement service_interface.query(i:inst_t) {
@@ -148,7 +192,7 @@ object service_implementation(self : node) = {
 		var idval := arr.get(proposed_log,idp);
 		var check : bool := false;
 		var idm : inst_t := 0;
-		while idm < my_log.end {
+		while idm < my_log.end { #my_log for self
 			if arr.get(my_log,idm) = idval {
 				check := true;
 			};
@@ -162,16 +206,74 @@ object service_implementation(self : node) = {
 
 		};		
 		idp := idp + 1;
-	}
+	};
+	#leader checking if all its proposed values are acknowledged by all other nodes. Code only executed if msg_status is false
+	#i.e., if the value is in the log
+	idp := 0;
+	while idp < arr_ackmsg.end(ack_log) {
+                var getele : ack_msg_type;
+                getele := arr_ackmsg.get(ack_log,idp);
+	        var iter := node.iter.create(0);
+                while ~iter.is_end
+                {
+                        var n := iter.val;
+			#all other nodes than the leader which is self in this case
+			if n ~= self {
+				var check : bool := true;
+				var idm : inst_t := 0;
+				while idm < getele.node_reply.end {
+					if arr_ack.get(getele.node_reply,idm) = n {
+						check := false;
+					};
+					idm := idm + 1;
+				};
+				if check = true {
+					#we have to determine whether it is a propose message or decision message. 
+					#It can be a propose message and that should be sent to the leader if value is not present in leader's my_log
+					#It will be a decision message if the value is present in the my_log of leader
+					var j : inst_t := 0;
+                			var i : inst_t := arr.end(my_log);
+                			while j < arr.end(my_log) {
+                        			if arr.get(my_log,j) = getele.val {
+                                			i := j;
+                        			};
+                        			j := j + 1;
+                			};
+					var m : msg;
+					if i = arr.end(my_log) {
+						m.m_kind := msg_kind.propose_msg;
+					}
+					else {
+                        			m.m_kind := msg_kind.decision_msg;
+						m.m_index := i;
+					};
+                        		m.m_value := getele.val;
+					if m.m_kind = msg_kind.decision_msg {
+						call my_debug_node(self); 
+                        			call net.send(self,n,m);
+					}
+					else {
+						call net.send(self,leader,m);
+					}
+			
+				}
+			};
+                        iter := iter.next;
+                };	
+                idp := idp + 1;
+
+      };
+
+	
     }
  
     invariant (service_interface.proposed(self,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(self,I,V)
     invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(self,I,V)
 }
-isolate implementation_iso = this with service_interface, inst_t, arr, net, node
+isolate implementation_iso = this with service_interface, inst_t, arr, arr_ack, arr_ackmsg, net, node
 # interpret values as strings:
 interpret value_t -> strlit
 
-extract impl(n : node) = service_implementation(n), inst_t, arr, node, net(n)
+extract impl(n : node) = service_implementation(n), inst_t, arr, arr_ack, arr_ackmsg, node, net(n)
 
 # generate and compile with `ivyc isolate=impl rsm_impl.ivy`
