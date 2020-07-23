@@ -159,7 +159,7 @@ object service_implementation(self : node) = {
                 call net.send(self,leader,ma);
 		call service_interface.notify_decision(self,m.m_index,m.m_value);
 	}
-	else if m.m_kind = msg_kind.ack_msg { #ack_msg to leader. Only leader can read as leader
+	else if m.m_kind = msg_kind.ack_msg { #ack_msg to leader.
 		call my_debug_value(m.m_value);
 		var i : inst_t := 0;
 		while i < arr_ackmsg.end(ack_log) {
@@ -168,7 +168,6 @@ object service_implementation(self : node) = {
 			if getele.val = m.m_value {
 				getele.node_reply := arr_ack.append(getele.node_reply,m.m_node);
 				ack_log := arr_ackmsg.set(ack_log,i,getele);
-				#can be seen from leader node. Leader has pushed the node
 				call my_debug_node(m.m_node);
 			};
 			i := i + 1;
@@ -208,8 +207,7 @@ object service_implementation(self : node) = {
 		};		
 		idp := idp + 1;
 	};
-	#leader checking if all its proposed values are acknowledged by all other nodes. Code only executed if msg_status is false
-	#i.e., if the value is in the log
+	#leader checking if all its proposed values are acknowledged by all other nodes.
 	idp := 0;
 	while idp < arr_ackmsg.end(ack_log) {
                 var getele : ack_msg_type;
