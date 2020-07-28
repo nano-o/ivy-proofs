@@ -244,6 +244,7 @@ object service_implementation(self : node) = {
 					if i = arr.end(my_log) {
 						m.m_kind := msg_kind.propose_msg;
 					}
+					#present in my_log of leader
 					else {
                         			m.m_kind := msg_kind.decision_msg;
 						m.m_index := i;
@@ -267,7 +268,10 @@ object service_implementation(self : node) = {
 
 	
     }
- 
+
+    #proposed is true ans value is contained in my_log then log is also true
+    invariant ~service_interface.log(self,I,V) -> ~(arr.value(my_log,I) = V)
+    #invariant ~(arr.value(my_log,I) = V) <-> ~service_interface.log(self,I,V)
     invariant (service_interface.proposed(self,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(self,I,V)
     invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(self,I,V)
 }
