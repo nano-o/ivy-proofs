@@ -270,10 +270,8 @@ object service_implementation(self : node) = {
     }
 
     #proposed is true ans value is contained in my_log then log is also true
-    invariant ~service_interface.log(self,I,V) -> ~(arr.value(my_log,I) = V)
-    #invariant ~(arr.value(my_log,I) = V) <-> ~service_interface.log(self,I,V)
-    invariant (service_interface.proposed(self,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(self,I,V)
-    invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(self,I,V)
+    #invariant (service_interface.proposed(self,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(self,I,V)
+    invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) -> service_interface.log(self,I,V)
 }
 isolate implementation_iso = this with service_interface, inst_t, arr, arr_ack, arr_ackmsg, net, node
 # interpret values as strings:
