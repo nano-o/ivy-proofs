@@ -269,9 +269,15 @@ object service_implementation(self : node) = {
 	
     }
 
-    #proposed is true ans value is contained in my_log then log is also true
+    #if v has been proposed then it is contained in the proposed log
+    invariant service_interface.proposed(self,V) -> ((arr.value(proposed_log,I) = V) & (I < arr.end(proposed_log)))
+    #if my_log and ack_log contains it then proposed_log does too (only if self has proposed. We are under self)
+    #invariant ((arr_ackmsg.value(ack_log,I).val = V) & (I < arr_ackmsg.end(ack_log))) -> ((arr.value(proposed_log,J) = V) & (J < arr.end(proposed_log)))
+    #invariant ((arr_ackmsg.value(ack_log,I).val = V) & (I < arr_ackmsg.end(ack_log))) -> ((arr.value(my_log,J) = V) & (J < arr.end(my_log)))
+    #invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) -> ((arr.value(proposed_log,J) = V) & (J < arr.end(proposed_log)))
     #invariant (service_interface.proposed(self,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(self,I,V)
-    invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) -> service_interface.log(self,I,V)
+    #invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) -> service_interface.log(self,I,V)
+
 }
 isolate implementation_iso = this with service_interface, inst_t, arr, arr_ack, arr_ackmsg, net, node
 # interpret values as strings:
