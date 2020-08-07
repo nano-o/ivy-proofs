@@ -45,7 +45,24 @@ object msg = {
     }
 }
 
-instance net : simple_tcp(node,msg)
+module my_tcp = { # here we add a relation to track which messages have been received
+        instantiate simple_tcp(node,msg)
+        specification {
+                relation received(M:msg, N:node)
+                after init
+                {
+                        received(M,N) := false;
+                }
+                before recv(n:node,m:msg)
+                {
+                        received(m,n) := true;
+                }
+                invariant net.received(M,N) -> net.sent(M,N)
+        }
+}
+
+
+instance net : my_tcp
 
 object service_interface(n : node) = {
     export action propose(v:value_t) # the environment, i.e. a client application, calls this
@@ -103,6 +120,7 @@ object service_implementation(self : node) = {
                 ack_log := arr_ackmsg.append(ack_log,mack);
 
 	};
+        #proposed_log or ack_lof has entry
 	call net.send(self,leader,m);
     }
 
@@ -125,11 +143,13 @@ object service_implementation(self : node) = {
        		mb.m_value := m.m_value;
 		mb.m_index := i;
 		#call my_debug_action(mb.m_index);
+		call service_interface.notify_decision(self,i,m.m_value);
 		var iter := node.iter.create(0);
             	while ~iter.is_end
             	{
                 	var n := iter.val;
 			if n ~= self {
+				#my_log has value
                 		call net.send(self,n,mb);
 				#call my_debug_node(n);
 				#call my_debug_value(mb.m_value);
@@ -156,6 +176,7 @@ object service_implementation(self : node) = {
                 ma.m_kind := msg_kind.ack_msg;
                 ma.m_value := m.m_value;
                 ma.m_node := self;
+		#my_log has value
                 call net.send(self,leader,ma);
 		call service_interface.notify_decision(self,m.m_index,m.m_value);
 	}
@@ -228,7 +249,7 @@ object service_implementation(self : node) = {
 					};
 					idm := idm + 1;
 				};
-				if check = true {
+				if check = true { #node is not there
 					#we have to determine whether it is a propose message or decision message. 
 					#It can be a propose message and that should be sent to the leader if value is not present in leader's my_log
 					#It will be a decision message if the value is present in the my_log of leader
@@ -259,27 +280,34 @@ object service_implementation(self : node) = {
 					}
 			
 				}
-			};
+			}; #if n~= self
                         iter := iter.next;
-                };	
+                }; #while close (for nodes)	
                 idp := idp + 1;
 
-      };
+      }; #while closed for ack
 
 	
     }
 
     #if v has been proposed then it is contained in the proposed log
-    invariant service_interface.proposed(self,V) -> ((arr.value(proposed_log,I) = V) & (I < arr.end(proposed_log)))
+    invariant service_interface.proposed(self,V) <-> exists I. ((arr.value(proposed_log,I) = V) & (I < arr.end(proposed_log)))
+    invariant exists I. ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) -> service_interface.proposed(self,V)
     #if my_log and ack_log contains it then proposed_log does too (only if self has proposed. We are under self)
     #invariant ((arr_ackmsg.value(ack_log,I).val = V) & (I < arr_ackmsg.end(ack_log))) -> ((arr.value(proposed_log,J) = V) & (J < arr.end(proposed_log)))
     #invariant ((arr_ackmsg.value(ack_log,I).val = V) & (I < arr_ackmsg.end(ack_log))) -> ((arr.value(my_log,J) = V) & (J < arr.end(my_log)))
     #invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) -> ((arr.value(proposed_log,J) = V) & (J < arr.end(proposed_log)))
-    #invariant (service_interface.proposed(self,V) & (arr.value(my_log,I) = V) & (I < arr.end(my_log))) <->  service_interface.log(self,I,V)
-    #invariant ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) -> service_interface.log(self,I,V)
+    #invariant (service_interface.proposed(self,V) & exists I. ((arr.value(my_log,I) = V) & (I < arr.end(my_log)))) <->  service_interface.log(self,I,V)
+    #invariant exists I. ((arr.value(my_log,I) = V) & (I < arr.end(my_log))) <-> service_interface.log(self,I,V)
+    #invariant net.sent(M,self) <-> service_interface.proposed(self,V)
+    invariant service_interface.proposed(self,V) -> net.sent(M,self)
+    invariant net.sent(M,self) <->  service_interface.log(self,I,V)
+    #invariant (msg.m_kind = msg_kind.propose_msg) -> service_interface.proposed(self,V) 
+    invariant service_interface.log(self,I,V) <->  ((arr.value(my_log,I) = V) & (I < arr.end(my_log)))
 
 }
-isolate implementation_iso = this with service_interface, inst_t, arr, arr_ack, arr_ackmsg, net, node
+#isolate implementation_iso = this with service_interface, inst_t, arr, arr_ack, arr_ackmsg, net, node
+isolate service_implementation_iso = service_implementation with service_interface, inst_t, arr, arr_ack, arr_ackmsg, net, node
 # interpret values as strings:
 interpret value_t -> strlit
 
