@@ -50,7 +50,7 @@ proof {
         # We now show that all nodes must receive the proposal, which contradicts the invariant above
 
         invariant member(N,q) -> eventually proposal(N,v) # follows from the first assumption in the property; this means that we wait for proposals from member of q in the waiting loop
-        invariant member(N,q) & ($happened$ proposal(N,v)) -> proposal(N,v) #  proposal is monotonic; note this does not hold for non-members of q (not sure why at this moment)
+        invariant member(N,q) & ($happened$ proposal(N,v)) -> proposal(N,v) #  proposal is monotonic; note this does not hold for non-members of q, because 'globally ~proposal' could hold instead of 'proposal', i.e. in general we have ($l2s_w N . proposal(N,v))(N) | proposal(N,v) | (globally ~proposal(N,v))
 
         invariant globally (proposal(N,V) -> eventually received(M,N,V)) # second assumption in the property
         invariant ($was$ proposal(N,V)) -> eventually received(M,N,V) # follows from previous and the fact that proposal is monotonic; this means that we wait to receive proposals after the save point
