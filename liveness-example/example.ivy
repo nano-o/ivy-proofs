@@ -1,0 +1,58 @@
+#lang ivy1.7
+
+type node # finite type foo
+type value
+type quorum
+relation member(N:node, Q:quorum)
+axiom exists N . member(N,Q1) & member(N,Q2)
+relation proposal(N:node,V:value)
+relation decision(N:node,V:value)
+relation received(N:node,M:node,V:value)
+after init {
+  proposal(N,V) := false;
+  decision(N,V) := false;
+  received(N,M,V) := false;
+
+  l2s_d(N:node) := true; # there is a fixed, finite number of nodes, so we add them all to the initial footprint
+}
+export action propose(n:node, v:value) = {
+    assume ~proposal(n,V); # never proposed before
+    proposal(n,v) := true;
+}
+export action receive(n:node, m:node, v:value) = {
+    assume proposal(m,v);
+    received(n,m,v) := true;
+    if exists Q . forall N . member(N,Q) -> received(n,N,v) {
+        decision(n,v) := true;
+    }
+}
+
+# liveness property:
+# witnesses:
+individual q:quorum
+individual v:value
+individual n:node
+temporal property (
+    (forall N . member(N,q) -> eventually proposal(N,v)) & # all members of q eventually propose the same value v
+    (forall N,M,V . globally (proposal(N,V) -> eventually received(M,N,V))) &
+    ((forall N . eventually decision(N,v)) | globally ~decision(n,v)) # either all nodes eventually decide, or there is at least one node n which does not
+) -> forall N . eventually decision(N,v)
+proof {
+    tactic l2s with
+        invariant ~(l2s_waiting & l2s_frozen) & ~(l2s_frozen & l2s_saved) & ~(l2s_waiting & l2s_saved)
+        invariant l2s_d(N:node) & l2s_d(v) & l2s_d(q)
+        invariant (l2s_frozen | l2s_saved) -> l2s_a(N:node) & l2s_a(v) & l2s_a(q)
+
+        invariant exists N . globally ~decision (N,v) # negation of the goal
+        invariant globally ~decision (n,v) # n is a witness for the negation of the goal
+        invariant [not_received] exists N . member(N,q) & ~received(n,N,v) # otherwise, n would have decided
+
+        # We now show that all nodes must receive the proposal, which contradicts the invariant above
+
+        invariant member(N,q) -> eventually proposal(N,v) # follows from the first assumption in the property; this means that we wait for proposals from member of q in the waiting loop
+        invariant member(N,q) & ($happened$ proposal(N,v)) -> proposal(N,v) #  proposal is monotonic; note this does not hold for non-members of q (not sure why at this moment)
+
+        invariant globally (proposal(N,V) -> eventually received(M,N,V)) # second assumption in the property
+        invariant ($was$ proposal(N,V)) -> eventually received(M,N,V) # follows from previous and the fact that proposal is monotonic; this means that we wait to receive proposals after the save point
+        invariant V = v & ($was$ proposal(N,V)) & ($happened$ received(M,N,V)) -> received(M,N,V) # now we get a contradiction with invariant [not_received]
+}
