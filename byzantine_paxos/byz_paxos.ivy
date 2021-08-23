@@ -58,7 +58,7 @@ action propose(n:node, r:round, q:quorum) = {
       assume r ~= none;
       assume ~proposal(n,r,V);
       assume forall N. member(N, q) -> one_b(N,r);
-      
+
       local maxr:round, maxv:value {
           assume ((forall N, MAXR, V. ~(member(N, q) & ~le(r,MAXR) & vote(N,MAXR,V))) |
                   ( maxr ~= none &
@@ -108,7 +108,7 @@ conjecture is_good(N) & proposal(N,R,V1) & proposal(N,R,V2) -> V1 = V2
 conjecture is_good(N) & vote(N,R,V) -> exists Q . forall N2 . is_good(N2) & member(N2,Q) -> proposal(N2,R,V)
 
 # decisions come from quorums of votes:
-conjecture forall R, V, N. is_good(N) & decision(N,R,V) 
+conjecture forall R, V, N. is_good(N) & decision(N,R,V)
   -> exists Q. forall N2. is_good(N2) & member(N2, Q) -> vote(N2,R,V)
 
 # Properties of choosable and proposal
