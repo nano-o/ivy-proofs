@@ -1,0 +1,83 @@
+#lang ivy1.7
+
+# This is a simple example of liveness proof in Ivy. We consider a trivial
+# crash-stop agreement protocol where nodes propose values and a value is
+# decided if a quorum unanimously proposes it. We prove that if (a) eventually,
+# a quorum unanimously proposes some value v and (b) every proposal is
+# eventually received by all nodes, then every node eventually decides v.
+
+# To understand what is going on, read the paper "Reducing liveness to safety
+# in first-order logic", and maybe "Temporal prophecy for proving temporal
+# properties of infinite-state systems".
+
+type node
+type value
+type quorum
+relation member(N:node, Q:quorum)
+
+axiom exists N . member(N,Q1) & member(N,Q2) # the quorum intersection property
+
+relation proposal(N:node,V:value)
+relation decision(N:node,V:value)
+relation received(N:node,M:node,V:value)
+
+after init {
+  proposal(N,V) := false;
+  decision(N,V) := false;
+  received(N,M,V) := false;
+
+  l2s_d(N:node) := true; # there is a fixed, finite number of nodes, so we add them all to the initial footprint
+}
+export action propose(n:node, v:value) = {
+    assume ~proposal(n,V); # never proposed before
+    proposal(n,v) := true;
+}
+export action receive(n:node, m:node, v:value) = {
+    assume proposal(m,v);
+    received(n,m,v) := true;
+    if exists Q . forall N . member(N,Q) -> received(n,N,v) {
+        decision(n,v) := true;
+    }
+}
+
+# safety:
+
+invariant decision(N1,V1) & decision(N2,V2) -> V1 = V2
+invariant decision(N,V) -> exists Q . forall N . member(N,Q) -> proposal(N,V)
+invariant received(N,M,V) -> proposal(M,V)
+invariant proposal(N,V1) & proposal(N,V2) -> V1 = V2
+
+# liveness:
+
+individual q:quorum
+individual v:value
+individual n:node
+
+temporal property (
+    (forall N . member(N,q) -> eventually proposal(N,v)) & # eventually, all members of q propose the value v
+    (forall N,M,V . globally (proposal(N,V) -> eventually received(M,N,V))) & # a proposal is eventually received by every node
+    ((exists N . globally ~decision(N,v)) -> globally ~decision(n,v)) # if there exists a node that never decides, then it's node n; it is convenient to be able to refer to n (and this is sound because n is an arbitrary fixed constant)
+) -> forall N . eventually decision(N,v)
+proof {
+    tactic l2s with
+        # trivial phase invariants of the l2s automaton:
+        invariant ~(l2s_waiting & l2s_frozen) & ~(l2s_frozen & l2s_saved) & ~(l2s_waiting & l2s_saved)
+        # properties of the footprint:
+        invariant l2s_d(N:node) & l2s_d(v) & l2s_d(q)
+        invariant (l2s_frozen | l2s_saved) -> l2s_a(N:node) & l2s_a(v) & l2s_a(q)
+
+        # first, we establish that there must be a member N of q such that n never receives N's proposal. Then, using the fairness assumption, we'll establish that this is a contradiction
+        invariant exists N . globally ~decision (N,v) # negation of the goal
+        invariant globally ~decision (n,v) # n is a witness for the negation of the goal
+        invariant exists N . member(N,q) & ~received(n,N,v) # otherwise, n would have decided; let's call this (P)
+
+        # now we get to the contradiction.
+        # first, we (indirectly) establish that, by the save point, all members of q must have proposed v:
+        invariant member(N,q) -> eventually proposal(N,v) # by assumption, we wait for all members of q to propose v
+        invariant member(N,q) & ($happened$ proposal(N,v)) -> proposal(N,v) # once v is proposed, it remains proposed (note that $happened X$ means that the l2s automaton is not waiting on fairness condition X anymore)
+
+        # next, we establish that, before we can enter the error state, all proposals must have been received. This contradicts (P).
+        invariant globally (proposal(N,V) -> eventually received(M,N,V)) # by assumption, once a proposal is made, we wait for it to be received by all nodes
+        invariant ($was$ proposal(N,V)) -> eventually received(M,N,V) # once a proposal is made, we must wait for all nodes to receive it (note that $was X$ means that X is true in the saved state
+        invariant V = v & ($was$ proposal(N,V)) & ($happened$ received(M,N,V)) -> received(M,N,V) # this contradicts (P)
+}
