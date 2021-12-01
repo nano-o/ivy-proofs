@@ -10,7 +10,7 @@
 # in first-order logic", and maybe "Temporal prophecy for proving temporal
 # properties of infinite-state systems".
 
-type node
+finite type node
 type value
 type quorum
 relation member(N:node, Q:quorum)
@@ -25,8 +25,6 @@ after init {
   proposal(N,V) := false;
   decision(N,V) := false;
   received(N,M,V) := false;
-
-  l2s_d(N:node) := true; # there is a fixed, finite number of nodes, so we add them all to the initial footprint
 }
 export action propose(n:node, v:value) = {
     assume ~proposal(n,V); # never proposed before
@@ -63,8 +61,8 @@ proof {
         # trivial phase invariants of the l2s automaton:
         invariant ~(l2s_waiting & l2s_frozen) & ~(l2s_frozen & l2s_saved) & ~(l2s_waiting & l2s_saved)
         # properties of the footprint:
-        invariant l2s_d(N:node) & l2s_d(v) & l2s_d(q)
-        invariant (l2s_frozen | l2s_saved) -> l2s_a(N:node) & l2s_a(v) & l2s_a(q)
+        invariant l2s_d(v) & l2s_d(q)
+        invariant (l2s_frozen | l2s_saved) -> l2s_a(v) & l2s_a(q)
 
         # first, we establish that there must be a member N of q such that n never receives N's proposal. Then, using the fairness assumption, we'll establish that this is a contradiction
         invariant exists N . globally ~decision (N,v) # negation of the goal
