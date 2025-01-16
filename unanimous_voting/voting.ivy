@@ -2,6 +2,7 @@
 
 include order
 include udp
+include collections
 
 type value
 instance node : iterable
@@ -45,23 +46,44 @@ isolate system = {
         id : node,
         val : value
     }
+
     instance net : udp_simple(node, msg)
+
+    instance vote_array : keyval(index, node, value)
 
     # NOTE tried a parameterized object `protocol(self:node)` but then `implement net.recv(v:value)` does not work (ivy complains about a wrong number of parameters).
     isolate protocol = {
+        function votes(N:node): vote_array
         implement interface.propose(self:node, v:value) {
             var dst := node.iter.begin();
             while ~dst.is_end {
                 var m:msg;
                 m.id := self;
                 m.val := v;
-                call net.send(self, dst.val, m)
+                call net.send(self, dst.val, m);
+                dst := dst.next();
             }
         }
         implement net.recv(self:node, m:msg) {
+            votes(self) := votes(self).append_pair(m.id, m.val);
+
+            # check whether all have voted:
             # TODO
+
+            # check whether we have unanimous votes:
+            var i:index := 0;
+            var unanimous:bool := true;
+            var v := votes(self).get_value(i);
+            i := i.next();
+            while (i < votes(self).end() & unanimous) {
+                var curr := votes(self).get_value(i);
+                if curr ~= v {
+                    unanimous := false;
+                };
+                i := i.next();
+            };
         }
-    } with interface, net
+    } with interface, net, node, vote_array
 }
 
-extract impl(n:node) = system.protocol(n), system.net(n), node
+extract impl(n:node) = system.protocol(n), system.net(n), node, system.vote_array
