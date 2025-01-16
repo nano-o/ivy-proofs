@@ -7,7 +7,7 @@ type value
 instance node : iterable
 
 isolate interface(n:node) = {
-    action propose(v:value)
+    export action propose(v:value)
     import action decide(v:value)
     specification {
         relation decided(V:value)
@@ -39,15 +39,29 @@ isolate abstract_protocol = {
     invariant decided(N1,V1) & decided(N2,V2) -> V1 = V2
 }
 
-instance net : udp_simple(node, value)
+isolate system = {
+    interpret value -> bv[1]
+    type msg = struct {
+        id : node,
+        val : value
+    }
+    instance net : udp_simple(node, msg)
 
-isolate protocol(self:node) = {
-    implement interface.propose(v:value) {
-        var dst := node.iter.begin();
-        while ~dst.is_end {
-            call net.send(self, dst.val, v)
+    # NOTE tried a parameterized object `protocol(self:node)` but then `implement net.recv(v:value)` does not work (ivy complains about a wrong number of parameters).
+    isolate protocol = {
+        implement interface.propose(self:node, v:value) {
+            var dst := node.iter.begin();
+            while ~dst.is_end {
+                var m:msg;
+                m.id := self;
+                m.val := v;
+                call net.send(self, dst.val, m)
+            }
         }
-    }
-    implement net.recv(v:value) {
-    }
-} with interface, net
+        implement net.recv(self:node, m:msg) {
+            # TODO
+        }
+    } with interface, net
+}
+
+extract impl(n:node) = system.protocol(n), system.net(n), node
