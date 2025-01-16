@@ -1,0 +1,53 @@
+#lang ivy1.8
+
+include order
+include udp
+
+type value
+instance node : iterable
+
+isolate interface(n:node) = {
+    action propose(v:value)
+    import action decide(v:value)
+    specification {
+        relation decided(V:value)
+        after init {
+            decided(V) := false
+        }
+        after decide {
+            decided(v) := true;
+            ensure interface.decided(N,V) -> V = v;
+        }
+        invariant interface.decided(N1,V1) & interface.decided(N2,V2) -> V1 = V2
+    }
+}
+
+isolate abstract_protocol = {
+    relation vote(N:node, V:value)
+    relation decided(N:node, V:value)
+    after init {
+        vote(N,V) := false;
+        decided(N,V) := false;
+    }
+    action do_vote(n:node,v:value) = {
+        vote(n,v) := true;
+    }
+    action decide(n:node, v:value) = {
+        require vote(N,v);
+        decided(n,v) := true
+    }
+    invariant decided(N1,V1) & decided(N2,V2) -> V1 = V2
+}
+
+instance net : udp_simple(node, value)
+
+isolate protocol(self:node) = {
+    implement interface.propose(v:value) {
+        var dst := node.iter.begin();
+        while ~dst.is_end {
+            call net.send(self, dst.val, v)
+        }
+    }
+    implement net.recv(v:value) {
+    }
+} with interface, net
