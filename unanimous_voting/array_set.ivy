@@ -1,0 +1,60 @@
+#lang ivy1.8
+
+include collections
+include order
+
+module array_set(range) = {
+    # range must be an instance of iterable
+
+    type this
+    alias t = this
+
+    relation member(E:range, S:t)
+
+    action emptyset returns (s:t)
+    action add(s:t, e: range) returns (s:t)
+    action is_universal(s:t) returns (res:bool)
+
+    specification {
+        after emptyset {
+            ensure ~member(E, s)
+        }
+
+        after add {
+            ensure member(E,s) = (member(E , old s) | E = e)
+        }
+
+        after is_universal {
+            ensure res = forall E . member(E,s)
+        }
+    }
+
+    implementation {
+        instance arr : array(index, range)
+        destructor repr(S:this): arr
+        definition member(E,S) = exists I. 0 <= I & I < repr(S).end & repr(S).value(I) = E
+
+        implement emptyset {
+            repr(s) := arr.empty()
+        }
+
+        implement add {
+            if ~member(e, s) {
+                repr(s) := repr(s).append(e)
+            }
+        }
+
+        implement is_universal {
+            res := true;
+            var it := range.iter.begin();
+            while ~it.is_end {
+                if ~member(it.val, s) {
+                    res := false;
+                };
+                it := it.next();
+            }
+        }
+    }
+
+    isolate iso = this with range
+}

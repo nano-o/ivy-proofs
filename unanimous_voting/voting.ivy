@@ -3,6 +3,7 @@
 include order
 include udp
 include collections
+include array_set
 
 type value
 instance node : iterable
@@ -15,9 +16,9 @@ isolate interface(n:node) = {
         after init {
             decided(V) := false
         }
-        after decide {
+        before decide {
+            require interface.decided(N,V) -> V = v;
             decided(v) := true;
-            ensure interface.decided(N,V) -> V = v;
         }
         invariant interface.decided(N1,V1) & interface.decided(N2,V2) -> V1 = V2
     }
@@ -40,50 +41,75 @@ isolate abstract_protocol = {
     invariant decided(N1,V1) & decided(N2,V2) -> V1 = V2
 }
 
+# debug actions
+import action debug_recv(self:node, sender:node)
+import action debug_vote(self:node)
+import action debug_recv_vote_for_candidate(self:node)
+import action debug_decide(self:node)
+
 isolate system = {
     interpret value -> bv[1]
     type msg = struct {
-        id : node,
+        sender : node,
         val : value
     }
 
     instance net : udp_simple(node, msg)
 
-    instance vote_array : keyval(index, node, value)
+    instance node_set : array_set(node)
 
     # NOTE tried a parameterized object `protocol(self:node)` but then `implement net.recv(v:value)` does not work (ivy complains about a wrong number of parameters).
     isolate protocol = {
-        function votes(N:node): vote_array
-        implement interface.propose(self:node, v:value) {
-            var dst := node.iter.begin();
-            while ~dst.is_end {
-                var m:msg;
-                m.id := self;
-                m.val := v;
-                call net.send(self, dst.val, m);
-                dst := dst.next();
-            }
+
+        function voted(N:node): bool
+        function candidate(N:node): value # first value a node votes for
+        function voted_for_candidate(N:node): node_set.t
+
+        after init {
+            voted(N) := false;
+            var empty := node_set.emptyset();
+            voted_for_candidate(N) := empty;
         }
-        implement net.recv(self:node, m:msg) {
-            votes(self) := votes(self).append_pair(m.id, m.val);
 
-            # check whether all have voted:
-            # TODO
-
-            # check whether we have unanimous votes:
-            var i:index := 0;
-            var unanimous:bool := true;
-            var v := votes(self).get_value(i);
-            i := i.next();
-            while (i < votes(self).end() & unanimous) {
-                var curr := votes(self).get_value(i);
-                if curr ~= v {
-                    unanimous := false;
-                };
-                i := i.next();
+        implement interface.propose(self:node, v:value) {
+            if ~voted(self) { # if we have not voted yet
+                call do_vote(self, v);
             };
         }
-    } with interface, net, node, vote_array
+
+        action do_vote(self:node, v:value) = {
+            call debug_vote(self);
+            candidate(self) := v; # remember that we are trying to decide v
+            voted_for_candidate(self) := node_set.add(voted_for_candidate(self), self);
+            # broadcast a vote message:
+            var m:msg;
+            m.sender := self;
+            m.val := v;
+            var dst := node.iter.begin();
+            while ~dst.is_end {
+                call net.send(self, dst.val, m);
+                dst := dst.next();
+            };
+            voted(self) := true; # remember that we voted
+        }
+
+        implement net.recv(self:node, m:msg) {
+            call debug_recv(self, m.sender);
+            # TODO if not voted yet, vote for the value in the message
+            if ~voted(self) {
+                call do_vote(self, m.val);
+            };
+            if candidate(self) = m.val {
+                call debug_recv_vote_for_candidate(self);
+                voted_for_candidate(self) := node_set.add(voted_for_candidate(self), m.sender);
+            };
+            if node_set.is_universal(voted_for_candidate(self)) {
+                call debug_decide(self);
+                call interface.decide(self, candidate(self));
+            };
+        }
+    } with interface, net, node, node_set
 }
 
-extract impl(n:node) = system.protocol(n), system.net(n), node, system.vote_array
+extract impl(n:node) = system.protocol(n), system.net(n), node, system.node_set
+
