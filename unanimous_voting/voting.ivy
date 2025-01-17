@@ -41,39 +41,38 @@ isolate abstract_protocol = {
     invariant decided(N1,V1) & decided(N2,V2) -> V1 = V2
 }
 
-isolate system = {
-    interpret value -> bv[1]
-    type msg = struct {
-        sender : node,
-        val : value
-    }
+type msg = struct {
+    sender : node,
+    val : value
+}
 
-    instance net : udp_simple(node, msg)
+instance net : udp_simple(node, msg)
 
-    instance node_set : array_set(node)
+instance node_set : array_set(node)
 
-    # NOTE tried a parameterized object `protocol(self:node)` but then `implement net.recv(v:value)` does not work (ivy complains about a wrong number of parameters).
-    isolate protocol = {
+isolate protocol = {
 
-        function voted(N:node): bool
-        function candidate(N:node): value # first value a node votes for
-        function voted_for_candidate(N:node): node_set.t
+    object server(self:node) = {
+
+        function voted: bool
+        function candidate: value # first value a node votes for
+        function voted_for_candidate: node_set.t
 
         after init {
-            voted(N) := false;
+            voted := false;
             var empty := node_set.emptyset();
-            voted_for_candidate(N) := empty;
+            voted_for_candidate := empty;
         }
 
-        implement interface.propose(self:node, v:value) {
-            if ~voted(self) { # if we have not voted yet
-                call do_vote(self, v);
+        implement interface.propose(v:value) {
+            if ~voted { # if we have not voted yet
+                call do_vote(v);
             };
         }
 
-        action do_vote(self:node, v:value) = {
-            candidate(self) := v; # remember that we are trying to decide v
-            voted_for_candidate(self) := node_set.add(voted_for_candidate(self), self);
+        action do_vote(v:value) = {
+            candidate := v; # remember that we are trying to decide v
+            voted_for_candidate := node_set.add(voted_for_candidate, self);
             # broadcast a vote message:
             var m:msg;
             m.sender := self;
@@ -83,22 +82,24 @@ isolate system = {
                 call net.send(self, dst.val, m);
                 dst := dst.next();
             };
-            voted(self) := true; # remember that we voted
+            voted := true; # remember that we voted
         }
 
-        implement net.recv(self:node, m:msg) {
+        implement net.recv(m:msg) {
             # if not voted yet, vote for the value in the message:
-            if ~voted(self) {
-                call do_vote(self, m.val);
+            if ~voted {
+                call do_vote(m.val);
             };
-            if candidate(self) = m.val {
-                voted_for_candidate(self) := node_set.add(voted_for_candidate(self), m.sender);
+            if candidate = m.val {
+                voted_for_candidate := node_set.add(voted_for_candidate, m.sender);
             };
-            if node_set.is_universal(voted_for_candidate(self)) {
-                call interface.decide(self, candidate(self));
+            if node_set.is_universal(voted_for_candidate) {
+                call interface.decide(self, candidate);
             };
         }
-    } with interface, net, node, node_set
-}
+    }
+} with interface, net, node, node_set
 
-extract impl(n:node) = system.protocol(n), system.net(n), node, system.node_set
+interpret value -> bv[1]
+
+extract impl(n:node) = protocol.server(n), net(n), node, node_set
