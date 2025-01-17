@@ -41,12 +41,6 @@ isolate abstract_protocol = {
     invariant decided(N1,V1) & decided(N2,V2) -> V1 = V2
 }
 
-# debug actions
-import action debug_recv(self:node, sender:node)
-import action debug_vote(self:node)
-import action debug_recv_vote_for_candidate(self:node)
-import action debug_decide(self:node)
-
 isolate system = {
     interpret value -> bv[1]
     type msg = struct {
@@ -78,7 +72,6 @@ isolate system = {
         }
 
         action do_vote(self:node, v:value) = {
-            call debug_vote(self);
             candidate(self) := v; # remember that we are trying to decide v
             voted_for_candidate(self) := node_set.add(voted_for_candidate(self), self);
             # broadcast a vote message:
@@ -94,17 +87,14 @@ isolate system = {
         }
 
         implement net.recv(self:node, m:msg) {
-            call debug_recv(self, m.sender);
-            # TODO if not voted yet, vote for the value in the message
+            # if not voted yet, vote for the value in the message:
             if ~voted(self) {
                 call do_vote(self, m.val);
             };
             if candidate(self) = m.val {
-                call debug_recv_vote_for_candidate(self);
                 voted_for_candidate(self) := node_set.add(voted_for_candidate(self), m.sender);
             };
             if node_set.is_universal(voted_for_candidate(self)) {
-                call debug_decide(self);
                 call interface.decide(self, candidate(self));
             };
         }
@@ -112,4 +102,3 @@ isolate system = {
 }
 
 extract impl(n:node) = system.protocol(n), system.net(n), node, system.node_set
-
