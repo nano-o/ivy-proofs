@@ -32,6 +32,7 @@ isolate abstract_protocol = {
         decided(N,V) := false;
     }
     action do_vote(n:node,v:value) = {
+        require ~vote(n,V);
         vote(n,v) := true;
     }
     action decide(n:node, v:value) = {
@@ -71,6 +72,7 @@ isolate protocol = {
         }
 
         action do_vote(v:value) = {
+            call abstract_protocol.do_vote(self,v);
             candidate := v; # remember that we are trying to decide v
             voted_for_candidate := node_set.add(voted_for_candidate, self);
             # broadcast a vote message:
@@ -94,11 +96,12 @@ isolate protocol = {
                 voted_for_candidate := node_set.add(voted_for_candidate, m.sender);
             };
             if node_set.is_universal(voted_for_candidate) {
+                call abstract_protocol.decide(self, candidate);
                 call interface.decide(self, candidate);
             };
         }
     }
-} with interface, net, node, node_set
+} with interface, net, node, node_set, abstract_protocol
 
 interpret value -> bv[1]
 
