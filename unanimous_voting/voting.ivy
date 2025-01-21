@@ -39,6 +39,8 @@ isolate abstract_protocol = {
         require vote(N,v);
         decided(n,v) := true
     }
+    invariant vote(N,V1) & vote(N,V2) -> V1 = V2
+    invariant decided(N,V) -> vote(N,V)
     invariant decided(N1,V1) & decided(N2,V2) -> V1 = V2
 }
 
@@ -50,6 +52,9 @@ type msg = struct {
 instance net : udp_simple(node, msg)
 
 instance node_set : array_set(node)
+
+import action debug_received_vote(self:node, frm:node, v:value)
+import action debug_set(self:node, s:node_set)
 
 isolate protocol = {
 
@@ -88,6 +93,7 @@ isolate protocol = {
         }
 
         implement net.recv(m:msg) {
+            # debug_received_vote(self, m.sender, m.val);
             # if not voted yet, vote for the value in the message:
             if ~voted {
                 call do_vote(m.val);
@@ -95,7 +101,8 @@ isolate protocol = {
             if candidate = m.val {
                 voted_for_candidate := node_set.add(voted_for_candidate, m.sender);
             };
-            if node_set.is_universal(voted_for_candidate) {
+            # call debug_set(self, voted_for_candidate);
+            if voted_for_candidate.is_universal() {
                 call abstract_protocol.decide(self, candidate);
                 call interface.decide(self, candidate);
             };
