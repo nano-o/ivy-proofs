@@ -47,7 +47,9 @@ module array_set(range) = {
         implement is_universal {
             res := true;
             var it := range.iter.begin();
-            while ~it.is_end {
+            while ~it.is_end
+            invariant res = (forall E . range.iter.done(E, it) -> member(E, s))
+            {
                 if ~member(it.val, s) {
                     res := false;
                 };

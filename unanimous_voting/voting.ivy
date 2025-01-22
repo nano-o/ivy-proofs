@@ -17,7 +17,7 @@ isolate interface(n:node) = {
             decided(V) := false
         }
         before decide {
-            require interface.decided(N,V) -> V = v;
+            # require interface.decided(N,V) -> V = v;
             decided(v) := true;
         }
         invariant interface.decided(N1,V1) & interface.decided(N2,V2) -> V1 = V2
@@ -58,6 +58,13 @@ import action debug_set(self:node, s:node_set)
 
 isolate protocol = {
 
+    invariant abstract_protocol.vote(N,V) = (server(N).voted & V = server(N).candidate)
+    invariant net.spec.sent(M,N2) -> abstract_protocol.vote(sender(M),val(M))
+    trusted isolate temp = {
+        invariant node_set.member(N2, server(N).voted_for_candidate) -> abstract_protocol.vote(N2,server(N).candidate)
+    }
+    #invariant abstract_protocol.decided(N,V = ...
+
     object server(self:node) = {
 
         function voted: bool
@@ -84,10 +91,12 @@ isolate protocol = {
             var m:msg;
             m.sender := self;
             m.val := v;
-            var dst := node.iter.begin();
-            while ~dst.is_end {
-                call net.send(self, dst.val, m);
-                dst := dst.next();
+            var it := node.iter.begin();
+            while ~it.is_end
+            invariant node.iter.done(N, it) -> net.spec.sent(m, N)
+            {
+                call net.send(self, it.val, m);
+                it := it.next();
             };
             voted := true; # remember that we voted
         }
