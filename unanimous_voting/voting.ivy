@@ -66,6 +66,9 @@ isolate protocol = {
     # protocol state
     invariant node_set.member(N2, server(N).voted_for_candidate) -> server(N).voted
 
+    # protocol state relates to interface state
+    invariant interface.decided(N,V) -> server(N).voted & V = server(N).candidate
+
     object server(self:node) = {
 
         function voted: bool
