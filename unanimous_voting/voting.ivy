@@ -58,13 +58,17 @@ import action debug_set(self:node, s:node_set)
 
 isolate protocol = {
 
-    # protocol state relates to abstract state
-    invariant abstract_protocol.vote(N,V) = (server(N).voted & V = server(N).candidate)
-    invariant net.spec.sent(M,N2) -> abstract_protocol.vote(sender(M),val(M))
-    invariant node_set.member(N2, server(N).voted_for_candidate) -> abstract_protocol.vote(N2,server(N).candidate)
+    invariant interface.decided(N,V) = abstract_protocol.decided(N,V)
+    invariant (server(N).voted & V = server(N).candidate) = abstract_protocol.vote(N,V)
 
-    # protocol state
+    # if somebody's in my local voted-for-candidate set, then i've voted
     invariant node_set.member(N2, server(N).voted_for_candidate) -> server(N).voted
+    # if somebody's in my local voted-for-candidate set, then they voted for my candidate
+    invariant node_set.member(N2, server(N).voted_for_candidate)
+        -> server(N2).voted & server(N2).candidate = server(N).candidate
+    # inflight messages correspond to sender state (the sender's vote)
+    invariant net.spec.sent(M, DST)
+        -> server(sender(M)).voted & server(sender(M)).candidate = val(M)
 
     object server(self:node) = {
 
@@ -96,6 +100,7 @@ isolate protocol = {
             while ~it.is_end
             invariant node.iter.done(N, it) -> net.spec.sent(m, N)
             invariant net.spec.sent(M,N) & ~(old net.spec.sent(M,N)) -> M = m
+            # invariant (old net.spec.sent(M,N)) -> net.spec.sent(M,N)
             {
                 call net.send(self, it.val, m);
                 it := it.next();
