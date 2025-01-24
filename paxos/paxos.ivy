@@ -15,9 +15,9 @@ trusted isolate quorum_intersection = {
 
 # first, the absract protocol:
 isolate abs = {
-    relation left_rnd(N:node, R:round)
-    relation proposal(R:round, V:value)
-    relation vote(N:node, R:round, V:value)
+    relation left_rnd(N:node, R:round) # true for rounds we left, and false for the current round, but otherwise unconstrained
+    relation proposal(R:round, V:value) # a leader (implicit) proposes a value for the round
+    relation vote(N:node, R:round, V:value) # a node votes on a value for the round
     relation decision(N:node, R:round, V:value)
 
     after init {
@@ -174,3 +174,11 @@ isolate protocol = {
     }
 
 } with abs, round, quorum_intersection
+
+isolate impl = {
+    # mimic what we did for the impl in unanimous voting
+    #
+    # instead of requiring unanimous voting, require only quorum majority
+    #
+    # take a look at paxos made simple
+}
