@@ -1,5 +1,4 @@
-#lang ivy1.7
-# TODO port to 1.8
+#lang ivy1.8
 
 include order
 
