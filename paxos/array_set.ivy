@@ -50,7 +50,7 @@ module array_set_with_majority(range) = {
 
         implementation {
             # TODO inline C++ implementation
-            definition majority(S) = true
+            definition majority(S) = false
         }
     }
 
