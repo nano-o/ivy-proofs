@@ -1,6 +1,5 @@
 #lang ivy1.7
-
-#TODO: Prove validity!
+# TODO port to 1.8
 
 include order
 
@@ -82,7 +81,7 @@ isolate abs = {
 
 } with round, quorum_intersection
 
-# now the more concrete specification:
+# now the more concrete, but still abstract, specification:
 isolate protocol = {
 
     # We now introduce explicit one_b messages that contain the maximum round at which the sender voted and the corresponding value.
@@ -92,8 +91,8 @@ isolate protocol = {
     relation one_a(R:round)
     relation one_b(N:node, R:round, MAXR:round, MAXV:value)
     individual current_round(N:node) : round
-    relation proposal(R:round, V:value)
-    relation vote(N:node, R:round, V:value)
+    relation proposal(R:round, V:value) # 2a
+    relation vote(N:node, R:round, V:value) # 2b
     relation decision(N:node, R:round, V:value)
 
     after init {
