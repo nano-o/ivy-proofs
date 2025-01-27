@@ -1,0 +1,69 @@
+#lang ivy1.8
+
+# a set datatype with a majority predicate indicating whether the set consists of a strict majority of its element type (which must be an iterable)
+
+include collections
+include order
+
+module array_set_with_majority(range) = {
+    # range must be an instance of iterable
+
+    type this
+    alias t = this
+
+    relation member(E:range, S:t)
+    relation majority(S:t)
+
+    action emptyset returns (s:t)
+    action add(s:t, e: range) returns (s:t)
+
+    specification {
+        after emptyset {
+            ensure ~member(E, s)
+        }
+
+        after add {
+            ensure member(E,s) = (member(E , old s) | E = e)
+        }
+
+    }
+
+    implementation {
+        instance arr : array(index, range)
+        destructor repr(S:this): arr
+        definition member(E,S) = exists I. 0 <= I & I < repr(S).end & repr(S).value(I) = E
+
+        implement emptyset {
+            repr(s) := arr.empty()
+        }
+
+        implement add {
+            if ~member(e, s) {
+                repr(s) := repr(s).append(e)
+            }
+        }
+    }
+
+    trusted isolate majority_iso = {
+        explicit invariant [majorities_intersect]
+            majority(S1) & majority(S2) -> exists N . member(N,S1) & member(N,S2)
+
+        implementation {
+            # TODO inline C++ implementation
+            definition majority(S) = false
+        }
+    }
+
+    isolate iso = this with range
+}
+
+# uncomment to check:
+# instance elem : iterable
+# instance elem_set : array_set_with_majority(elem)
+# export elem_set.emptyset
+# export elem_set.add
+
+# use this to make ivyc emit code for the majority function:
+# export action test(s:elem_set) returns (res:bool) = {
+    # res := elem_set.majority(s);
+# }
