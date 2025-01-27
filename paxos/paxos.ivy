@@ -1,8 +1,9 @@
 #lang ivy1.8
 
 include order
+include udp
 
-type node
+instance node : iterable
 type value
 type quorum
 instance round : unbounded_sequence
@@ -32,14 +33,16 @@ isolate abs = {
     }
 
     action propose(r:round, q:quorum, maxr:round, v:value) = {
-        require ~proposal(r,V);
-        require forall N, R . member(N, q) & R < r -> left_rnd(N,R);
+        require ~proposal(r,V); # no proposals have been made in round r
+        require forall N, R . member(N, q) & R < r -> left_rnd(N,R); # quorum q nodes have left rounds before r
 
         # find the maximal max_vote in the quorum
-        require ((forall N,R,V. ~(member(N, q) & R < r & vote(N,R,V))) | (
-           (exists N. member(N, q) & maxr < r & vote(N,maxr,v)) &
-           (forall N,R,V. (member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr))
-        );
+        require
+            ( (forall N,R,V. ~(member(N, q) & R < r & vote(N,R,V))) # no quorum q members voted in rounds before r
+            | ( (exists N. member(N, q) & maxr < r & vote(N,maxr,v)) # a quorum q node has voted for v in round maxr < r
+              & (forall N,R,V. (member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr) # all votes cast by quorum members before round r were cast no later than maxr
+              )
+            );
         proposal(r, v) := true
     }
 
@@ -174,10 +177,90 @@ isolate protocol = {
 
 } with abs, round, quorum_intersection
 
+object msg_kind = {
+    type this = {prepare, promise, propose, vote, decide}
+}
+type msg = struct {
+    m_sender : node,
+    m_kind : msg_kind,
+    m_round : round,
+    m_value : value,
+    m_accepted : bool,
+    m_promised : round # MAYBE rename "m_prepared"?
+}
+
+instance net : udp_simple(node, msg)
+
 isolate impl = {
     # mimic what we did for the impl in unanimous voting
     #
     # instead of requiring unanimous voting, require only quorum majority
     #
     # take a look at paxos made simple
+    object server(self:node) = {
+
+        function proposing_round: round
+        function proposing_value: round
+        function prepared : round
+        function accepted_isset: bool
+        function accepted_round: round
+        function accepted_value: value
+
+        after init {
+            accepted_isset := false;
+        }
+
+        action proposer_send_prepare(r:round, v:value) = {
+            proposing_round := r;
+            proposing_value := v;
+            var prep:msg;
+            prep.m_sender := self;
+            prep.m_kind := msg_kind.prepare;
+            prep.m_round := proposing_round;
+            prep.m_value := proposing_value;
+            var it := node.iter.begin();
+            while ~it.is_end
+            # TODO invariants
+            {
+                call net.send(self, it.val, prep);
+            }
+        }
+
+        implement net.recv(req:msg) {
+            if req.m_kind = msg_kind.prepare {
+                call acceptor_handle_prepare(req);
+            } else if req.m_kind = msg_kind.promise {
+                call proposer_handle_promise(req);
+            } else if req.m_kind = msg_kind.propose {
+                call acceptor_handle_propose(req);
+            }
+        }
+
+        action acceptor_handle_prepare(prep:msg) = {
+            require prep.m_kind = msg_kind.prepare;
+            if prepared < prep.m_round {
+                prepared := prep.m_round;
+                # Promise never to accept a proposal less than prepared.
+                var prom:msg;
+                prom.m_sender := self;
+                prom.m_kind := msg_kind.promise;
+                prom.m_promised := prepared;
+                prom.m_accepted := accepted_isset;
+                prom.m_round := accepted_round;
+                prom.m_value := accepted_value;
+                call net.send(self, req.m_sender, prom);
+            }
+        }
+
+        action proposer_handle_promise(req:msg) = {
+            require req.m_kind = msg_kind.promise;
+            # FIXME: verify that we sent a corresponding prepare request?
+
+        }
+
+        action acceptor_handle_propose(req:msg) = {
+            require req.m_kind = msg_kind.propose;
+            # We can accept a proposal if not responded to a prepare greater.
+        }
+    }
 }
