@@ -33,13 +33,12 @@ isolate abs = {
     }
 
     action propose(r:round, q:quorum, maxr:round, v:value) = {
-        require ~proposal(r,V);
-        require forall N, R . member(N, q) & R < r -> left_rnd(N,R);
+        require ~proposal(r,V); # no proposal has been made in round r
+        require forall N, R . member(N, q) & R < r -> left_rnd(N,R); # members of q have left all rounds smaller than r
 
-        # find the maximal max_vote in the quorum
-        require ((forall N,R,V. ~(member(N, q) & R < r & vote(N,R,V))) | (
-           (exists N. member(N, q) & maxr < r & vote(N,maxr,v)) &
-           (forall N,R,V. (member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr))
+        require ((forall N,R,V. ~(member(N, q) & R < r & vote(N,R,V))) | ( # no member of q has voted before r, or
+           (exists N. member(N, q) & maxr < r & vote(N,maxr,v)) & # a member of q has voted for v in round maxr < r, and
+           (forall N,R,V. (member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr)) # all votes by members of q cast before round r were cast no later than round maxr
         );
         proposal(r, v) := true
     }
