@@ -230,7 +230,6 @@ isolate impl = {
         function learned: bool # whether the `decision` proposal has a majority
 
         after init {
-            promised := node_set.emptyset();
             promised_isset := false;
             prepared_isset := false;
             accepted_isset := false;
@@ -252,6 +251,7 @@ isolate impl = {
         export action proposer_send_prepare(r:round, v:value) = {
             proposing_round := r;
             proposing_value := v;
+            promised := node_set.emptyset();
             var prep:msg;
             prep.m_sender := self;
             prep.m_kind := msg_kind.prepare;
