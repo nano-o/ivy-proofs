@@ -326,7 +326,7 @@ isolate impl = {
         action acceptor_handle_propose(prop:msg) = {
             require prop.m_kind = msg_kind.propose;
             require accept_isset & accepted_round = prop.m_round -> accepted_value = prop.m_value;
-            if ~prepared_isset | ~(prepared_round > prop.m_round) {
+            if ~prepared_isset | ~(prepared_round > prop.m_round) { # XXX can this happen only once per round?
                 accepted_isset := true;
                 accepted_round := prop.m_round;
                 accepted_value := prop.m_value;
