@@ -204,14 +204,17 @@ isolate impl = {
         function proposing_value: value # value we will propose if we receive enough promises
         function promised: node_set.t # acceptors who've promised the round we're proposing
 
+        # optional -- max round value seen among promises
         function promised_isset: bool # whether the next field is valid
-        function promised_round: round # max round value seen among promises
+        function promised_round: round
 
         # as acceptor
 
+        # optional -- highest round we've promised not to accept less than
         function prepared_isset: bool # whether the next field is valid
-        function prepared_round: round # highest round we've promised not to accept less than
+        function prepared_round: round
 
+        # optional -- highest proposal we've accepted
         function accepted_isset: bool # whether the next two fields are valid
         function accepted_round: round
         function accepted_value: value
@@ -296,8 +299,7 @@ isolate impl = {
                     promised_round := prom.m_round;
                     proposing_value := prom.m_value;
                     # FIXME: what about the case where we receive two promises,
-                    # with the same round but distinct values? TODO: double
-                    # check the paper
+                    # with the same round but distinct values?
                 }
                 if node_set.majority(promised) {
                     call proposer_send_propose();
@@ -330,8 +332,7 @@ isolate impl = {
                 accepted_value := prop.m_value;
                 acceptor_send_decide(prop.m_round, prop.m_value);
                 # FIXME: what about the case where we receive two proposals,
-                # with the same round but distinct values? TODO: double check
-                # the paper
+                # with the same round but distinct values?
             }
         }
 
