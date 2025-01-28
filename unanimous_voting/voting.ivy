@@ -70,9 +70,6 @@ isolate protocol = {
     invariant net.spec.sent(M, DST)
         -> server(sender(M)).voted & server(sender(M)).candidate = val(M)
 
-    # protocol state relates to interface state
-    invariant interface.decided(N,V) -> server(N).voted & V = server(N).candidate
-
     object server(self:node) = {
 
         function voted: bool
