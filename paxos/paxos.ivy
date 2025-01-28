@@ -289,6 +289,7 @@ isolate impl = {
         # internal (called in response to network)
         action proposer_handle_promise(prom:msg) = {
             require prom.m_kind = msg_kind.promise;
+            require promised_isset & promised_round = prom.m_round -> promised_value = prom.m_value;
             # is this a response to our (most recent) prepare?
             if proposing_round = prom.m_promised {
                 # remember that the sender promised
@@ -298,8 +299,6 @@ isolate impl = {
                     promised_isset := true;
                     promised_round := prom.m_round;
                     proposing_value := prom.m_value;
-                    # FIXME: what about the case where we receive two promises,
-                    # with the same round but distinct values?
                 }
                 if node_set.majority(promised) {
                     call proposer_send_propose();
@@ -326,13 +325,12 @@ isolate impl = {
         # internal (called in response to network)
         action acceptor_handle_propose(prop:msg) = {
             require prop.m_kind = msg_kind.propose;
+            require accept_isset & accepted_round = prop.m_round -> accepted_value = prop.m_value;
             if ~prepared_isset | ~(prepared_round > prop.m_round) {
                 accepted_isset := true;
                 accepted_round := prop.m_round;
                 accepted_value := prop.m_value;
                 acceptor_send_decide(prop.m_round, prop.m_value);
-                # FIXME: what about the case where we receive two proposals,
-                # with the same round but distinct values?
             }
         }
 
@@ -354,13 +352,12 @@ isolate impl = {
         # internal (called in response to network)
         action learner_handle_decide(dec:msg) = { # FIXME: this fn is all guesswork
             require dec.m_kind = msg_kind.decide;
+            require decision_isset & decision_round = dec.m_round -> decision_value = dec.m_value;
             # (re)set decision fields if they've never been set or if it's a new round
             if ~decision_isset | decision_round < dec.m_round {
                 decision_isset := true;
                 decision_round := dec.m_round;
                 decision_value := dec.m_value;
-                # FIXME: what about the case where we receive two decides, with
-                # the same round but distinct values?
                 decided := node_set.emptyset();
                 learned := false;
             }
