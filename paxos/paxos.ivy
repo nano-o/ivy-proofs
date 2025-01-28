@@ -2,6 +2,7 @@
 
 include order
 include udp
+include array_set
 
 instance node : iterable
 type value
@@ -178,52 +179,47 @@ isolate protocol = {
 } with abs, round, quorum_intersection
 
 object msg_kind = {
-    type this = {prepare, promise, propose, vote, decide}
+    type this = {prepare, promise, propose}
+    # NOTE we use "propose" here for the message Lamport calls "accept"
 }
 type msg = struct {
-    m_sender : node,
-    m_kind : msg_kind,
-    m_round : round,
-    m_value : value,
-    m_accepted : bool,
-    m_promised : round # MAYBE rename "m_prepared"?
+    m_sender : node,    # used by all messages
+    m_kind : msg_kind,  # used by all messages
+    m_round : round,    # used by prepare, promise, propose 
+    m_value : value,    # used by          promise, propose
+    m_accepted : bool,  # used by          promise          (to indicate whether m_round and m_value are set)
+    m_promised : round  # used by          promise          (to indicate which prepare message we're responding to)
 }
 
 instance net : udp_simple(node, msg)
+instance node_set : array_set_with_majority(node)
 
 isolate impl = {
-    # mimic what we did for the impl in unanimous voting
-    #
-    # instead of requiring unanimous voting, require only quorum majority
-    #
-    # take a look at paxos made simple
     object server(self:node) = {
 
-        function proposing_round: round
-        function proposing_value: round
-        function prepared : round
-        function accepted_isset: bool
+        # as proposer
+
+        function proposing_round: round # round for which we have sent prepare messages
+        function proposing_value: value # value we will propose if we receive enough promises
+        function promised: node_set.t # acceptors who've promised the round we're proposing
+
+        function promised_isset: bool # whether the next field is valid
+        function promised_round: round # max round value seen among promises
+
+        # as acceptor
+
+        function prepared_isset: bool # whether the next field is valid
+        function prepared_round: round # highest round we've promised not to accept less than
+
+        function accepted_isset: bool # whether the next two fields are valid
         function accepted_round: round
         function accepted_value: value
 
         after init {
+            promised := node_set.emptyset();
+            promised_isset := false;
+            prepared_isset := false;
             accepted_isset := false;
-        }
-
-        action proposer_send_prepare(r:round, v:value) = {
-            proposing_round := r;
-            proposing_value := v;
-            var prep:msg;
-            prep.m_sender := self;
-            prep.m_kind := msg_kind.prepare;
-            prep.m_round := proposing_round;
-            prep.m_value := proposing_value;
-            var it := node.iter.begin();
-            while ~it.is_end
-            # TODO invariants
-            {
-                call net.send(self, it.val, prep);
-            }
         }
 
         implement net.recv(req:msg) {
@@ -236,31 +232,96 @@ isolate impl = {
             }
         }
 
-        action acceptor_handle_prepare(prep:msg) = {
-            require prep.m_kind = msg_kind.prepare;
-            if prepared < prep.m_round {
-                prepared := prep.m_round;
-                # Promise never to accept a proposal less than prepared.
-                var prom:msg;
-                prom.m_sender := self;
-                prom.m_kind := msg_kind.promise;
-                prom.m_promised := prepared;
-                prom.m_accepted := accepted_isset;
-                prom.m_round := accepted_round;
-                prom.m_value := accepted_value;
-                call net.send(self, req.m_sender, prom);
+        export action proposer_send_prepare(r:round, v:value) = {
+            proposing_round := r;
+            proposing_value := v;
+            var prep:msg;
+            prep.m_sender := self;
+            prep.m_kind := msg_kind.prepare;
+            prep.m_round := proposing_round;
+            var it := node.iter.begin();
+            while ~it.is_end
+            # TODO loop invariants
+            {
+                call net.send(self, it.val, prep);
             }
         }
 
-        action proposer_handle_promise(req:msg) = {
-            require req.m_kind = msg_kind.promise;
-            # FIXME: verify that we sent a corresponding prepare request?
-
+        # internal (called in response to network)
+        action acceptor_handle_prepare(prep:msg) = {
+            require prep.m_kind = msg_kind.prepare;
+            if ~prepared_isset | prepared_round < prep.m_round {
+                prepared_isset := true;
+                prepared_round := prep.m_round;
+                call acceptor_send_promise(prep.m_sender);
+            }
         }
 
-        action acceptor_handle_propose(req:msg) = {
-            require req.m_kind = msg_kind.propose;
-            # We can accept a proposal if not responded to a prepare greater.
+        # internal (called in response to a prepare)
+        action acceptor_send_promise(dst:node) = {
+            var prom:msg;
+            prom.m_sender := self;
+            prom.m_kind := msg_kind.promise;
+            prom.m_promised := prepared_round;
+            prom.m_accepted := accepted_isset;
+            prom.m_round := accepted_round;
+            prom.m_value := accepted_value;
+            call net.send(self, dst, prom);
         }
+
+        # internal (called in response to network)
+        action proposer_handle_promise(prom:msg) = {
+            require prom.m_kind = msg_kind.promise;
+            # is this a response to our (most recent) prepare?
+            if proposing_round = prom.m_promised {
+                # remember that the sender promised
+                promised := node_set.add(promised, prom.m_sender);
+                # track the greatest round & value already accepted by others
+                if prom.m_accepted & (~promised_isset | promised_round < prom.m_round) {
+                    promised_isset := true;
+                    promised_round := prom.m_round;
+                    proposing_value := prom.m_value;
+                    # FIXME: what about the case where we receive two promises,
+                    # with the same round but distinct values? TODO: double
+                    # check the paper
+                }
+                if node_set.majority(promised) {
+                    call proposer_send_propose();
+                }
+            }
+            # else: ignore promises for the wrong round
+        }
+
+        # internal (to call this, use proposer_send_prepare)
+        action proposer_send_propose = {
+            # NOTE The paper says to propose to those acceptors who promised,
+            # but here we propose to all acceptors.
+            var prop:msg;
+            prop.m_sender := self;
+            prop.m_kind := msg_kind.propose;
+            prop.m_round := proposing_round;
+            prop.m_value := proposing_value;
+            var it := node.iter.begin();
+            while ~it.is_end
+            # TODO loop invariants
+            {
+                call net.send(self, it.val, prop);
+            }
+        }
+
+        # internal (called in response to network)
+        action acceptor_handle_propose(prop:msg) = {
+            require prop.m_kind = msg_kind.propose;
+            if ~prepared_isset | ~(prepared_round > prop.m_round) {
+                accepted_isset := true;
+                accepted_round := prop.m_round;
+                accepted_value := prop.m_value;
+                # FIXME: what about the case where we receive two proposals,
+                # with the same round but distinct values? TODO: double check
+                # the paper
+            }
+            # TODO: respond indicating acceptance
+        }
+
     }
 }
