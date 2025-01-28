@@ -216,11 +216,22 @@ isolate impl = {
         function accepted_round: round
         function accepted_value: value
 
+        # as decider
+
+        # optional -- highest proposal we've learned was accepted
+        function decision_isset: bool # whether the next three fields are valid
+        function decision_round: round
+        function decision_value: value
+
+        function decided: node_set.t # acceptors agree with the `decision` proposal
+        function learned: bool # whether the `decision` proposal has a majority
+
         after init {
             promised := node_set.emptyset();
             promised_isset := false;
             prepared_isset := false;
             accepted_isset := false;
+            decision_isset := false;
         }
 
         implement net.recv(req:msg) {
@@ -230,6 +241,8 @@ isolate impl = {
                 call proposer_handle_promise(req);
             } else if req.m_kind = msg_kind.propose {
                 call acceptor_handle_propose(req);
+            } else if req.m_kind = msg_kind.decide {
+                call learner_handle_decide(req);
             }
         }
 
@@ -334,6 +347,29 @@ isolate impl = {
             # TODO loop invariants
             {
                 call net.send(self, it.val, dec);
+            }
+        }
+
+        # internal (called in response to network)
+        action learner_handle_decide(dec:msg) = { # FIXME: this fn is all guesswork
+            require dec.m_kind = msg_kind.decide;
+            # (re)set decision fields if they've never been set or if it's a new round
+            if ~decision_isset | decision_round < dec.m_round {
+                decision_isset := true;
+                decision_round := dec.m_round;
+                decision_value := dec.m_value;
+                # FIXME: what about the case where we receive two decides, with
+                # the same round but distinct values?
+                decided := node_set.emptyset();
+                learned := false;
+            }
+            # track acceptances to learn the value
+            if decision_round = dec.m_round {
+                # (?) require decision_value = dec.m_value;
+                decided := node_set.add(decided, dec.m_sender);
+                if node_set.majority(decided) {
+                    learned := true;
+                }
             }
         }
 
