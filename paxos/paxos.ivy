@@ -176,16 +176,20 @@ isolate protocol = {
 } with abs, round, quorum_intersection
 
 object msg_kind = {
-    type this = {prepare, promise, propose}
-    # NOTE we use "propose" here for the message Lamport calls "accept"
+    type this = {
+        prepare, # 1a broadcast proposer→acceptors
+        promise, # 1b unicast acceptor→proposer (reply)
+        propose, # 2a broadcast proposer→acceptors
+        decide   # 2b broadcast acceptor→learners
+    }
 }
 type msg = struct {
     m_sender : node,    # used by all messages
     m_kind : msg_kind,  # used by all messages
-    m_round : round,    # used by prepare, promise, propose 
-    m_value : value,    # used by          promise, propose
-    m_accepted : bool,  # used by          promise          (to indicate whether m_round and m_value are set)
-    m_promised : round  # used by          promise          (to indicate which prepare message we're responding to)
+    m_round : round,    # used by prepare, promise, propose, decide
+    m_value : value,    # used by          promise, propose, decide
+    m_accepted : bool,  # used by          promise                  (to indicate whether m_round and m_value are set)
+    m_promised : round  # used by          promise                  (to indicate which prepare message we're responding to)
 }
 
 instance net : udp_simple(node, msg)
@@ -291,8 +295,6 @@ isolate impl = {
 
         # internal (to call this, use proposer_send_prepare)
         action proposer_send_propose = {
-            # NOTE The paper says to propose to those acceptors who promised,
-            # but here we propose to all acceptors.
             var prop:msg;
             prop.m_sender := self;
             prop.m_kind := msg_kind.propose;
@@ -313,11 +315,26 @@ isolate impl = {
                 accepted_isset := true;
                 accepted_round := prop.m_round;
                 accepted_value := prop.m_value;
+                acceptor_send_decide(prop.m_round, prop.m_value);
                 # FIXME: what about the case where we receive two proposals,
                 # with the same round but distinct values? TODO: double check
                 # the paper
             }
-            # TODO: respond indicating acceptance
+        }
+
+        # internal (called in response to a propose)
+        action acceptor_send_decide(r:round, v:value) = {
+            var dec:msg;
+            dec.m_sender := self;
+            dec.m_kind := msg_kind.decide;
+            dec.m_round := r;
+            dec.m_value := v;
+            var it := node.iter.begin();
+            while ~it.is_end
+            # TODO loop invariants
+            {
+                call net.send(self, it.val, dec);
+            }
         }
 
     }
