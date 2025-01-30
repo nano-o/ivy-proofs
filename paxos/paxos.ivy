@@ -175,21 +175,37 @@ isolate protocol = {
 
 } with abs, round, quorum_intersection
 
+isolate interface(n:node) = {
+    export action propose(v:value)
+    import action decide(v:value)
+    specification {
+        relation decided(V:value)
+        after init {
+            decided(V) := false
+        }
+        before decide {
+            require interface.decided(N,V) -> V = v;
+            decided(v) := true;
+        }
+        invariant interface.decided(N1,V1) & interface.decided(N2,V2) -> V1 = V2
+    }
+}
+
 object msg_kind = {
     type this = {
-        prepare, # 1a broadcast proposer→acceptors
-        promise, # 1b unicast acceptor→proposer (reply)
-        propose, # 2a broadcast proposer→acceptors
-        decide   # 2b broadcast acceptor→learners
+        1a, # broadcast proposer→acceptors "prepare"
+        1b, # unicast acceptor→proposer (reply) "promise"
+        2a, # broadcast proposer→acceptors "propose"/"accept"
+        2b  # broadcast acceptor→learners "decide"/"vote"
     }
 }
 type msg = struct {
-    m_sender : node,    # used by all messages
-    m_kind : msg_kind,  # used by all messages
-    m_round : round,    # used by prepare, promise, propose, decide
-    m_value : value,    # used by          promise, propose, decide
-    m_accepted : bool,  # used by          promise                  (to indicate whether m_round and m_value are set)
-    m_promised : round  # used by          promise                  (to indicate which prepare message we're responding to)
+    m_sender : node,      # used by all messages
+    m_kind : msg_kind,    # used by all messages
+    m_currnd : round,     # used by all messages
+    m_prop_isset : bool,  # used by
+    m_prop_round : round, # used by
+    m_prop_value : value  # used by
 }
 
 instance net : udp_simple(node, msg)
@@ -197,65 +213,110 @@ instance node_set : array_set_with_majority(node)
 
 isolate impl = {
     object server(self:node) = {
+        # GL: have the node behave as though its in one round for all roles;
+        # ignore messages tagged with smaller rounds; for higher rounds,
+        # abandon the current and join
 
-        # as proposer
+        # GL: there's a known bug in paxos-made-simple; rework using the
+        # abstract spec above as guidance
 
-        function proposing_round: round # round for which we have sent prepare messages
-        function proposing_value: value # value we will propose if we receive enough promises
-        function promised: node_set.t # acceptors who've promised the round we're proposing
+        # GL: you have shared predetermined mapping from Round->Node; each node
+        # has a predetermined leader
 
-        # optional -- max round value seen among promises
-        function promised_isset: bool # whether the next field is valid
-        function promised_round: round
+        # GL: distinguish external interface and the send_prepare function;
+        # e.g. the one from unanimous_voting; save the proposed value; and
+        # instead of learned:bool then call the interface function (or maybe,
+        # call it only once using the bool)
 
-        # as acceptor
+        # GL: keep state to ensure that self only proposes once per round
 
-        # optional -- highest round we've promised not to accept less than
-        function prepared_isset: bool # whether the next field is valid
-        function prepared_round: round
+        # GL: use assert instead of require for sanity checks
 
-        # optional -- highest proposal we've accepted
-        function accepted_isset: bool # whether the next two fields are valid
-        function accepted_round: round
-        function accepted_value: value
+        # GL: don't even need to keep track of what the votes are for b/c there
+        # will only one thing in the round; only one value gets proposed the
+        # whole round
 
-        # as decider
+        ### constant variables
 
-        # optional -- highest proposal we've learned was accepted
-        function decision_isset: bool # whether the next three fields are valid
-        function decision_round: round
-        function decision_value: value
+        # TODO: need some property of leader_of to say that it will be `self`
+        # for some round(s)
+        function leader_of(R:round):node # TODO: inline C++ def
+        # ASSUMPTION: all nodes use the same leader_of function (so that only
+        # one value is proposed by one node in each round)
 
-        function decided: node_set.t # acceptors agree with the `decision` proposal
-        function learned: bool # whether the `decision` proposal has a majority
+        ### state variables
 
+        function currnd: round          # initialized by init
+        function currnd_1b: node_set.t  # initialized by join_round
+        function currnd_2b: node_set.t  # initialized by join_round
+        function currnd_decided: bool   # initialized by join_round
+
+        # optional: proposal being considered in currnd
+        function maxrndprop_isset: bool # initialized by init
+        function maxrndprop_round: round # initialialized by interface.propose or handle_1b (as proposer) or handle_2a (as acceptor)
+        function maxrndprop_value: value # initialialized by interface.propose or handle_1b (as proposer) or handle_2a (as acceptor)
+
+        ### transition actions
+
+        # internal
         after init {
-            promised_isset := false;
-            prepared_isset := false;
-            accepted_isset := false;
-            decision_isset := false;
+            maxrndprop_isset := false;
+            # join the earliest round that we lead
+            currnd := 0;
+            while self ~= leader_of(currnd)
+            # TODO: loop invariants
+            {
+                currnd := currnd.next();
+            }
+            call join_round(currnd);
         }
 
-        implement net.recv(req:msg) {
-            if req.m_kind = msg_kind.prepare {
-                call acceptor_handle_prepare(req);
-            } else if req.m_kind = msg_kind.promise {
-                call proposer_handle_promise(req);
-            } else if req.m_kind = msg_kind.propose {
-                call acceptor_handle_propose(req);
-            } else if req.m_kind = msg_kind.decide {
-                call learner_handle_decide(req);
+        # environment interface
+        export action timeout = {
+            call join_round(currnd.next());
+        }
+
+        # internal (called by init or timeout)
+        action join_round(r:round) = {
+            currnd := r;
+            currnd_1b := node_set.emptyset();
+            currnd_2b := node_set.emptyset();
+            currnd_decided := false;
+            if self = leader_of(r) {
+                call send_1a();
             }
         }
 
-        export action proposer_send_prepare(r:round, v:value) = {
-            proposing_round := r;
-            proposing_value := v;
-            promised := node_set.emptyset();
-            var prep:msg;
-            prep.m_sender := self;
-            prep.m_kind := msg_kind.prepare;
-            prep.m_round := proposing_round;
+        # client interface
+        implement interface.propose(v:value) {
+            if ~maxrndprop_isset {
+                maxrndprop_isset := true;
+                maxrndprop_value := v;
+                maxrndprop_round := currnd;
+            }
+        }
+
+        # environment interface
+        implement net.recv(m:msg) {
+            if m.m_currnd < currnd { } # ignore messages from earlier rounds
+            else if m.m_kind = msg_kind.1a { call handle_1a(m); }
+            else if m.m_kind = msg_kind.1b { call handle_1b(m); }
+            else if m.m_kind = msg_kind.2a { call handle_2a(m); }
+            else if m.m_kind = msg_kind.2b { call handle_2b(m); }
+        }
+
+        # internal
+        action new_msg(k:msg_kind) returns (m:msg) = {
+            m.m_sender := self;
+            m.m_kind := k;
+            m.m_currnd := currnd;
+        }
+
+        ### PREPARE
+
+        # internal (called by join_round)
+        action send_1a = {
+            var prep := new_msg(msg_kind.1a);
             var it := node.iter.begin();
             while ~it.is_end
             # TODO loop invariants
@@ -263,57 +324,50 @@ isolate impl = {
                 call net.send(self, it.val, prep);
             }
         }
-
         # internal (called in response to network)
-        action acceptor_handle_prepare(prep:msg) = {
-            require prep.m_kind = msg_kind.prepare;
-            if ~prepared_isset | prepared_round < prep.m_round {
-                prepared_isset := true;
-                prepared_round := prep.m_round;
-                call acceptor_send_promise(prep.m_sender);
+        action handle_1a(prep:msg) = {
+            assert prep.m_kind = msg_kind.1a;
+            if currnd < prep.m_currnd {
+                join_round(prep.m_currnd);
             }
+            call send_1b(prep.m_sender);
         }
 
-        # internal (called in response to a prepare)
-        action acceptor_send_promise(dst:node) = {
-            var prom:msg;
-            prom.m_sender := self;
-            prom.m_kind := msg_kind.promise;
-            prom.m_promised := prepared_round;
-            prom.m_accepted := accepted_isset;
-            prom.m_round := accepted_round;
-            prom.m_value := accepted_value;
+        ### PROMISE
+
+        # internal (called by handle_1a)
+        action send_1b(dst:node) = {
+            var prom := new_msg(msg_kind.1b);
+            prom.m_prop_isset := maxrndprop_isset;
+            prom.m_prop_round := maxrndprop_round;
+            prom.m_prop_value := maxrndprop_value;
             call net.send(self, dst, prom);
         }
-
         # internal (called in response to network)
-        action proposer_handle_promise(prom:msg) = {
-            require prom.m_kind = msg_kind.promise;
-            require promised_isset & promised_round = prom.m_round -> proposing_value = prom.m_value;
-            # is this a response to our (most recent) prepare?
-            if proposing_round = prom.m_promised {
-                # remember that the sender promised
-                promised := node_set.add(promised, prom.m_sender);
-                # track the greatest round & value already accepted by others
-                if prom.m_accepted & (~promised_isset | promised_round < prom.m_round) {
-                    promised_isset := true;
-                    promised_round := prom.m_round;
-                    proposing_value := prom.m_value;
+        action handle_1b(prom:msg) = {
+            assert prom.m_kind = msg_kind.1b;
+            if currnd = prom.m_currnd {
+                currnd_1b := node_set.add(currnd_1b, prom.m_sender);
+                if prom.m_prop_isset & (~maxrndprop_isset | maxrndprop_round < prom.m_prop_round) {
+                    maxrndprop_isset := true;
+                    maxrndprop_round := prom.m_prop_round;
+                    maxrndprop_value := prom.m_prop_value;
                 }
-                if node_set.majority(promised) {
-                    call proposer_send_propose();
+                if node_set.majority(currnd_1b) {
+                    call send_2a(); # FIXME: send only once per round?
                 }
             }
-            # else: ignore promises for the wrong round
+            # else: ignore 1b (promises) for the wrong round
         }
 
-        # internal (to call this, use proposer_send_prepare)
-        action proposer_send_propose = {
-            var prop:msg;
-            prop.m_sender := self;
-            prop.m_kind := msg_kind.propose;
-            prop.m_round := proposing_round;
-            prop.m_value := proposing_value;
+        ### PROPOSE
+
+        # internal (called by handle_1b)
+        action send_2a = {
+            var prop := new_msg(msg_kind.2a);
+            prop.m_prop_isset := true;
+            prop.m_prop_round := currnd; # NOTE, not the round we learned it from
+            prop.m_prop_value := maxrndprop_value;
             var it := node.iter.begin();
             while ~it.is_end
             # TODO loop invariants
@@ -321,54 +375,56 @@ isolate impl = {
                 call net.send(self, it.val, prop);
             }
         }
-
         # internal (called in response to network)
-        action acceptor_handle_propose(prop:msg) = {
-            require prop.m_kind = msg_kind.propose;
-            require accepted_isset & accepted_round = prop.m_round -> accepted_value = prop.m_value;
-            if ~prepared_isset | ~(prepared_round > prop.m_round) { # XXX can this happen only once per round?
-                accepted_isset := true;
-                accepted_round := prop.m_round;
-                accepted_value := prop.m_value;
-                acceptor_send_decide(prop.m_round, prop.m_value);
+        action handle_2a(prop:msg) = {
+            assert prop.m_kind = msg_kind.2a;
+            if currnd < prop.m_currnd {
+                join_round(prop.m_currnd);
             }
+            if ~maxrndprop_isset | (maxrndprop_round < prop.m_prop_round) { # XXX could use prop.currnd in this condition? they're equal
+                maxrndprop_isset := true;
+                maxrndprop_round := prop.m_prop_round;
+                maxrndprop_value := prop.m_prop_value;
+                send_2b();
+            }
+            # else: ignore 2a (proposals) for smaller rounds because 2a is broadcast
         }
 
-        # internal (called in response to a propose)
-        action acceptor_send_decide(r:round, v:value) = {
-            var dec:msg;
-            dec.m_sender := self;
-            dec.m_kind := msg_kind.decide;
-            dec.m_round := r;
-            dec.m_value := v;
+        ### VOTE
+
+        # internal (called by handle_2a)
+        action send_2b = {
+            var vote := new_msg(msg_kind.2b);
+            vote.m_prop_isset := maxrndprop_isset; # XXX is true
+            vote.m_prop_round := maxrndprop_round; # XXX is currnd
+            vote.m_prop_value := maxrndprop_value;
             var it := node.iter.begin();
             while ~it.is_end
             # TODO loop invariants
             {
-                call net.send(self, it.val, dec);
+                call net.send(self, it.val, vote);
             }
         }
-
         # internal (called in response to network)
-        action learner_handle_decide(dec:msg) = { # FIXME: this fn is all guesswork
-            require dec.m_kind = msg_kind.decide;
-            require decision_isset & decision_round = dec.m_round -> decision_value = dec.m_value;
-            # (re)set decision fields if they've never been set or if it's a new round
-            if ~decision_isset | decision_round < dec.m_round {
-                decision_isset := true;
-                decision_round := dec.m_round;
-                decision_value := dec.m_value;
-                decided := node_set.emptyset();
-                learned := false;
-            }
-            # track acceptances to learn the value
-            if decision_round = dec.m_round {
-                # (?) require decision_value = dec.m_value;
-                decided := node_set.add(decided, dec.m_sender);
-                if node_set.majority(decided) {
-                    learned := true;
-                }
-            }
+        action handle_2b(decision:msg) = {
+            assert decision.m_kind = msg_kind.2b;
+#           # (re)set decision fields if they've never been set or if it's a new round
+#           if ~decision_isset | decision_round < vote.m_round {
+#               decision_isset := true;
+#               decision_round := vote.m_round;
+#               decision_value := vote.m_value;
+#               decided := node_set.emptyset();
+#               learned := false;
+#           }
+#           # track acceptances to learn the value
+#           if decision_round = vote.m_round {
+#               # (?) require decision_value = vote.m_value;
+#               decided := node_set.add(decided, vote.m_sender);
+#               if node_set.majority(decided) {
+#                   # TODO: call the interface function
+#                   learned := true;
+#               }
+#           }
         }
 
     }
