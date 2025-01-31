@@ -269,7 +269,7 @@ isolate impl = {
 
         # internal (called by init, timeout, or net.recv)
         action join_round(r:round) = {
-            assert currnd < r;
+            assert currnd < r | 0 = r;
             currnd := r;
             if self = leader_of(r) {
                 sent_2a := false;
@@ -407,4 +407,6 @@ isolate impl = {
             }
         }
     }
-}
+} with round, node_set, node
+
+extract imp(n:node) = impl.server(n), round, node_set, node
