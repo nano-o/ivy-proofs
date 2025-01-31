@@ -403,7 +403,7 @@ isolate impl = {
             }
         }
     }
-} with round, node_set, node
+} with round, node_set, node, net, interface, protocol
 
 object interpretations = {
     definition impl.leader_of(r:round) = <<< r % (`node.max` + 1) >>>
