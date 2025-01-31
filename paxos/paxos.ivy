@@ -354,7 +354,7 @@ isolate impl = {
                 maxrndprop_value := prom.m_prop_value;
             }
             if ~sent_2a & node_set.majority(currnd_1b) {
-                sent_2a := true;
+                sent_2a := true; # FIXME: move this down into send_2a next to the broadcast call
                 call send_2a();
             }
         }
@@ -367,7 +367,9 @@ isolate impl = {
             prop.m_prop_isset := true;
             prop.m_prop_round := currnd; # XXX not the round where maxrndprop_value was introduced
             prop.m_prop_value := maxrndprop_value if maxrndprop_isset else clientprop_value;
-            call broadcast(prop);
+            if maxrndprop_isset | clientprop_isset {
+                call broadcast(prop);
+            }
         }
         # internal (called in response to network)
         action handle_2a(prop:msg) = {
