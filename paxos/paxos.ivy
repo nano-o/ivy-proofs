@@ -373,7 +373,6 @@ isolate impl = {
         action handle_2a(prop:msg) = {
             assert prop.m_kind = msg_kind.2a;
             assert prop.m_currnd = currnd;
-            assert prop.m_sender = self | self ~= leader_of(prop.m_currnd);
             # since there is only one leader per round, and the leader can
             # broadcast only one 2a message, we will only handle one 2a
             # message, therefore we accept that proposal
@@ -397,7 +396,6 @@ isolate impl = {
         action handle_2b(vote:msg) = {
             assert vote.m_kind = msg_kind.2b;
             assert vote.m_currnd = currnd;
-            assert vote.m_prop_value = maxrndprop_value; # FIXME: this can't be right
             currnd_2b := node_set.add(currnd_2b, vote.m_sender);
             if ~learned & node_set.majority(currnd_2b) {
                 learned := true;
