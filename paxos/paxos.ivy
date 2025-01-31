@@ -261,7 +261,10 @@ isolate impl = {
             maxrndprop_isset := false;
             clientprop_isset := false;
             learned := false;
-            call join_round(0);
+            currnd := 1;
+            # FIXME: for ivy_check you cannot call join_round in init, so to
+            # start manual testing use impl.server.timeout
+            #call join_round(0);
         }
 
         # environment interface
