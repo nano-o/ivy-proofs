@@ -228,9 +228,7 @@ isolate impl = {
     # ASSUMPTION: all nodes use the same leader_of function (so that only
     # one value is proposed by one node in each round)
 
-    interpret value -> bv[8]
     type debug_t
-    interpret debug_t -> bv[8]
 
     object server(self:node) = {
 
@@ -421,8 +419,11 @@ isolate impl = {
     }
 } with round, node_set, node
 
-object leader_of_impl = {
+object interpretations = {
     definition impl.leader_of(r:round) = <<< r % (`node.max` + 1) >>>
+    interpret impl.debug_t -> bv[8]
+
+    interpret value -> bv[8]
 }
 
-extract imp(n:node) = impl.server(n), round, node_set, node, leader_of_impl, net(n)
+extract imp(n:node) = impl.server(n), round, node_set, node, interpretations, net(n)
