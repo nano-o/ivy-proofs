@@ -231,7 +231,7 @@ isolate impl = {
         function leader_of(R:round):node
         # ASSUMPTION: all nodes use the same leader_of function (so that only
         # one value is proposed by one node in each round)
-        definition leader_of(r:round) = <<< r % (`node.max` + 1) >>>
+        definition leader_of(r:round):node = <<< r % (`node.max` + 1) >>>
 
         ### state variables
 
