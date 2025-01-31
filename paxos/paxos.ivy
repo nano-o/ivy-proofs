@@ -228,9 +228,10 @@ isolate impl = {
 
         # TODO: need some property of leader_of to say that it will be `self`
         # for some round(s)
-        function leader_of(R:round):node # TODO: inline C++ def
+        function leader_of(R:round):node
         # ASSUMPTION: all nodes use the same leader_of function (so that only
         # one value is proposed by one node in each round)
+        definition leader_of(r:round) = <<< r % (`node.max` + 1) >>>
 
         ### state variables
 
