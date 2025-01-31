@@ -218,31 +218,13 @@ instance net : udp_simple(node, msg)
 instance node_set : array_set_with_majority(node)
 
 isolate impl = {
+    # TODO: hook up to the abstract_protocol, isolate=protocol, by making calls to its actions
+
+    # TODO: tie state of impl to isolate=protocol using invariants
+
     object server(self:node) = {
-        # GL: have the node behave as though its in one round for all roles;
-        # ignore messages tagged with smaller rounds; for higher rounds,
-        # abandon the current and join
 
-        # GL: there's a known bug in paxos-made-simple; rework using the
-        # abstract spec above as guidance
-
-        # GL: you have shared predetermined mapping from Round->Node; each node
-        # has a predetermined leader
-
-        # GL: distinguish external interface and the send_prepare function;
-        # e.g. the one from unanimous_voting; save the proposed value; and
-        # instead of learned:bool then call the interface function (or maybe,
-        # call it only once using the bool)
-
-        # GL: keep state to ensure that self only proposes once per round
-
-        # GL: use assert instead of require for sanity checks
-
-        # GL: don't even need to keep track of what the votes are for b/c there
-        # will only one thing in the round; only one value gets proposed the
-        # whole round
-
-        ### constant variables
+        ### constants
 
         # TODO: need some property of leader_of to say that it will be `self`
         # for some round(s)
@@ -252,29 +234,31 @@ isolate impl = {
 
         ### state variables
 
-        function currnd: round          # initialized by init
-        function currnd_1b: node_set.t  # initialized by join_round
-        function currnd_2b: node_set.t  # initialized by join_round
-        function currnd_decided: bool   # initialized by join_round
+        # proposer state reinitialized every join_round
+        function sent_2a: bool
+        function currnd_1b: node_set.t
+        function currnd_2b: node_set.t
+
+        function learned: bool # initialized once by init and flipped true in handle_2b
+        function currnd: round # reinitialized every join_round
 
         # optional: proposal being considered in currnd
-        function maxrndprop_isset: bool # initialized by init
-        function maxrndprop_round: round # initialialized by interface.propose or handle_1b (as proposer) or handle_2a (as acceptor)
-        function maxrndprop_value: value # initialialized by interface.propose or handle_1b (as proposer) or handle_2a (as acceptor)
+        function maxrndprop_isset: bool  # initialized once by init and flipped true in several places
+        function maxrndprop_round: round # initialized by handle_1b (as proposer, from promises) or handle_2a (as acceptor, from a proposal)
+        function maxrndprop_value: value # initialized by handle_1b (as proposer, from promises) or handle_2a (as acceptor, from a proposal)
+
+        # optional: client proposal
+        function clientprop_isset: bool  # initialized once by init and flipped true in interface.propose
+        function clientprop_value: value # initialized once by interface.propose
 
         ### transition actions
 
         # internal
         after init {
             maxrndprop_isset := false;
-            # join the earliest round that we lead
-            currnd := 0;
-            while self ~= leader_of(currnd)
-            # TODO: loop invariants
-            {
-                currnd := currnd.next();
-            }
-            call join_round(currnd);
+            clientprop_isset := false;
+            learned := false;
+            call join_round(0);
         }
 
         # environment interface
@@ -282,40 +266,54 @@ isolate impl = {
             call join_round(currnd.next());
         }
 
-        # internal (called by init or timeout)
+        # internal (called by init, timeout, or net.recv)
         action join_round(r:round) = {
+            assert currnd < r;
             currnd := r;
-            currnd_1b := node_set.emptyset();
-            currnd_2b := node_set.emptyset();
-            currnd_decided := false;
             if self = leader_of(r) {
+                sent_2a := false;
+                currnd_1b := node_set.emptyset();
+                currnd_2b := node_set.emptyset();
                 call send_1a();
             }
         }
 
         # client interface
         implement interface.propose(v:value) {
-            if ~maxrndprop_isset {
-                maxrndprop_isset := true;
-                maxrndprop_value := v;
-                maxrndprop_round := currnd;
+            if ~clientprop_isset {
+                clientprop_isset := true;
+                clientprop_value := v;
             }
         }
 
         # environment interface
         implement net.recv(m:msg) {
-            if m.m_currnd < currnd { } # ignore messages from earlier rounds
+            # if we are behind, fast forward our round
+            if currnd < m.m_currnd { join_round(m.m_currnd); }
+
+            # if the message is behind ignore it, else dispatch it
+            if m.m_currnd < currnd { }
             else if m.m_kind = msg_kind.1a { call handle_1a(m); }
             else if m.m_kind = msg_kind.1b { call handle_1b(m); }
             else if m.m_kind = msg_kind.2a { call handle_2a(m); }
             else if m.m_kind = msg_kind.2b { call handle_2b(m); }
         }
 
-        # internal
+        # internal/helper
         action new_msg(k:msg_kind) returns (m:msg) = {
             m.m_sender := self;
             m.m_kind := k;
             m.m_currnd := currnd;
+        }
+
+        # internal/helper
+        action broadcast(m:msg) = {
+            var it := node.iter.begin();
+            while ~it.is_end
+            # TODO loop invariants
+            {
+                call net.send(self, it.val, m);
+            }
         }
 
         ### PREPARE
@@ -323,19 +321,13 @@ isolate impl = {
         # internal (called by join_round)
         action send_1a = {
             var prep := new_msg(msg_kind.1a);
-            var it := node.iter.begin();
-            while ~it.is_end
-            # TODO loop invariants
-            {
-                call net.send(self, it.val, prep);
-            }
+            call broadcast(prep);
         }
         # internal (called in response to network)
         action handle_1a(prep:msg) = {
             assert prep.m_kind = msg_kind.1a;
-            if currnd < prep.m_currnd {
-                join_round(prep.m_currnd);
-            }
+            assert prep.m_currnd = currnd;
+            assert prep.m_sender = self | self ~= leader_of(prep.m_currnd);
             call send_1b(prep.m_sender);
         }
 
@@ -344,26 +336,26 @@ isolate impl = {
         # internal (called by handle_1a)
         action send_1b(dst:node) = {
             var prom := new_msg(msg_kind.1b);
-            prom.m_prop_isset := maxrndprop_isset;
-            prom.m_prop_round := maxrndprop_round;
-            prom.m_prop_value := maxrndprop_value;
+            prom.m_prop_isset := maxrndprop_isset; # XXX might be false; that's ok
+            prom.m_prop_round := maxrndprop_round; # XXX might be uninitialized; that's ok
+            prom.m_prop_value := maxrndprop_value; # XXX might be uninitialized; that's ok
             call net.send(self, dst, prom);
         }
         # internal (called in response to network)
         action handle_1b(prom:msg) = {
             assert prom.m_kind = msg_kind.1b;
-            if currnd = prom.m_currnd {
-                currnd_1b := node_set.add(currnd_1b, prom.m_sender);
-                if prom.m_prop_isset & (~maxrndprop_isset | maxrndprop_round < prom.m_prop_round) {
-                    maxrndprop_isset := true;
-                    maxrndprop_round := prom.m_prop_round;
-                    maxrndprop_value := prom.m_prop_value;
-                }
-                if node_set.majority(currnd_1b) {
-                    call send_2a(); # FIXME: send only once per round?
-                }
+            assert prom.m_currnd = currnd;
+            assert self = leader_of(currnd);
+            currnd_1b := node_set.add(currnd_1b, prom.m_sender);
+            if prom.m_prop_isset & (~maxrndprop_isset | maxrndprop_round < prom.m_prop_round) {
+                maxrndprop_isset := true;
+                maxrndprop_round := prom.m_prop_round;
+                maxrndprop_value := prom.m_prop_value;
             }
-            # else: ignore 1b (promises) for the wrong round
+            if ~sent_2a & node_set.majority(currnd_1b) {
+                sent_2a := true;
+                call send_2a();
+            }
         }
 
         ### PROPOSE
@@ -372,28 +364,22 @@ isolate impl = {
         action send_2a = {
             var prop := new_msg(msg_kind.2a);
             prop.m_prop_isset := true;
-            prop.m_prop_round := currnd; # NOTE, not the round we learned it from
-            prop.m_prop_value := maxrndprop_value;
-            var it := node.iter.begin();
-            while ~it.is_end
-            # TODO loop invariants
-            {
-                call net.send(self, it.val, prop);
-            }
+            prop.m_prop_round := currnd; # XXX not the round where maxrndprop_value was introduced
+            prop.m_prop_value := maxrndprop_value if maxrndprop_isset else clientprop_value;
+            call broadcast(prop);
         }
         # internal (called in response to network)
         action handle_2a(prop:msg) = {
             assert prop.m_kind = msg_kind.2a;
-            if currnd < prop.m_currnd {
-                join_round(prop.m_currnd);
-            }
-            if ~maxrndprop_isset | (maxrndprop_round < prop.m_prop_round) { # XXX could use prop.currnd in this condition? they're equal
-                maxrndprop_isset := true;
-                maxrndprop_round := prop.m_prop_round;
-                maxrndprop_value := prop.m_prop_value;
-                send_2b();
-            }
-            # else: ignore 2a (proposals) for smaller rounds because 2a is broadcast
+            assert prop.m_currnd = currnd;
+            assert prop.m_sender = self | self ~= leader_of(prop.m_currnd);
+            # since there is only one leader per round, and the leader can
+            # broadcast only one 2a message, we will only handle one 2a
+            # message, therefore we accept that proposal
+            maxrndprop_isset := true;
+            maxrndprop_round := prop.m_prop_round; # XXX aka currnd
+            maxrndprop_value := prop.m_prop_value;
+            send_2b();
         }
 
         ### VOTE
@@ -401,37 +387,21 @@ isolate impl = {
         # internal (called by handle_2a)
         action send_2b = {
             var vote := new_msg(msg_kind.2b);
-            vote.m_prop_isset := maxrndprop_isset; # XXX is true
-            vote.m_prop_round := maxrndprop_round; # XXX is currnd
+            vote.m_prop_isset := true;
+            vote.m_prop_round := maxrndprop_round; # XXX aka currnd
             vote.m_prop_value := maxrndprop_value;
-            var it := node.iter.begin();
-            while ~it.is_end
-            # TODO loop invariants
-            {
-                call net.send(self, it.val, vote);
-            }
+            broadcast(vote);
         }
         # internal (called in response to network)
-        action handle_2b(decision:msg) = {
-            assert decision.m_kind = msg_kind.2b;
-#           # (re)set decision fields if they've never been set or if it's a new round
-#           if ~decision_isset | decision_round < vote.m_round {
-#               decision_isset := true;
-#               decision_round := vote.m_round;
-#               decision_value := vote.m_value;
-#               decided := node_set.emptyset();
-#               learned := false;
-#           }
-#           # track acceptances to learn the value
-#           if decision_round = vote.m_round {
-#               # (?) require decision_value = vote.m_value;
-#               decided := node_set.add(decided, vote.m_sender);
-#               if node_set.majority(decided) {
-#                   # TODO: call the interface function
-#                   learned := true;
-#               }
-#           }
+        action handle_2b(vote:msg) = {
+            assert vote.m_kind = msg_kind.2b;
+            assert vote.m_currnd = currnd;
+            assert vote.m_prop_value = maxrndprop_value; # FIXME: this can't be right
+            currnd_2b := node_set.add(currnd_2b, vote.m_sender);
+            if ~learned & node_set.majority(currnd_2b) {
+                learned := true;
+                call interface.decide(self, vote.m_prop_value);
+            }
         }
-
     }
 }
