@@ -12,11 +12,17 @@ isolate interface(n:node) = {
     export action propose(v:value)
     import action decide(v:value)
     specification {
+        relation proposed(V:value)
         relation decided(V:value)
         after init {
-            decided(V) := false
+            proposed(V) := false;
+            decided(V) := false;
+        }
+        after propose {
+            proposed(v) := true;
         }
         before decide {
+            require exists N. interface.proposed(N,v);
             require interface.decided(N,V) -> V = v;
             decided(v) := true;
         }
