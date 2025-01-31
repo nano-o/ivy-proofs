@@ -311,6 +311,7 @@ isolate impl = {
             # TODO loop invariants
             {
                 call net.send(self, it.val, m);
+                it := it.next();
             }
         }
 
@@ -410,4 +411,4 @@ object leader_of_impl = {
     definition impl.leader_of(r:round) = <<< r % (`node.max` + 1) >>>
 }
 
-extract imp(n:node) = impl.server(n), round, node_set, node, leader_of_impl
+extract imp(n:node) = impl.server(n), round, node_set, node, leader_of_impl, net(n)
