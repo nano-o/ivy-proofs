@@ -98,7 +98,8 @@ isolate protocol = {
     after init {
         one_a(R) := false;
         one_b(N,R,MAXR,V) := false;
-        current_round(N) := 1;
+        var one:round := round.next(0);
+        current_round(N) := one;
         proposal(R,V) := false;
         vote(N,R,V) := false;
         decision(N,R,V) := false;
