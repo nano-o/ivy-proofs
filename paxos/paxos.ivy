@@ -308,7 +308,8 @@ isolate impl = {
         action broadcast(m:msg) = {
             var it := node.iter.begin();
             while ~it.is_end
-            # TODO loop invariants
+            invariant node.iter.done(N, it) -> net.spec.sent(m, N)
+            invariant net.spec.sent(M,N) & ~(old net.spec.sent(M,N)) -> M = m
             {
                 call net.send(self, it.val, m);
                 it := it.next();
