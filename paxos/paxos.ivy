@@ -222,6 +222,12 @@ isolate impl = {
 
     # TODO: tie state of impl to isolate=protocol using invariants
 
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1a -> m_sender(M) = leader_of(m_currnd(M))
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1b -> DST = leader_of(m_currnd(M))
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2a -> m_sender(M) = leader_of(m_currnd(M))
+    # all the values in 2b (vote) proposals will be the same because acceptors
+    # only vote for the leader's prposed value (and there's only one leader)
+
     # TODO: need some property of leader_of to say that it will be `self`
     # for some round(s)
     function leader_of(R:round):node
