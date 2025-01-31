@@ -22,7 +22,7 @@ isolate abs = {
     relation decision(N:node, R:round, V:value)
 
     after init {
-        left_rnd(N,R) := false;
+        left_rnd(N,R) := R = 0;
         proposal(R,V) := false;
         vote(N,R,V) := false;
         decision(N,R,V) := false;
@@ -98,7 +98,7 @@ isolate protocol = {
     after init {
         one_a(R) := false;
         one_b(N,R,MAXR,V) := false;
-        current_round(N) := 0;
+        current_round(N) := 1;
         proposal(R,V) := false;
         vote(N,R,V) := false;
         decision(N,R,V) := false;
@@ -227,6 +227,10 @@ isolate impl = {
     # all the values in 2b (vote) proposals will be the same because acceptors
     # only vote for the leader's prposed value (and there's only one leader)
 
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1a -> protocol.one_a(m_currnd(M))
+    invariant server.currnd(N) = protocol.current_round(N)
+    #invariant relate to vote
+
     # TODO: need some property of leader_of to say that it will be `self`
     # for some round(s)
     function leader_of(R:round):node
@@ -264,7 +268,7 @@ isolate impl = {
             currnd := 1;
             # FIXME: for ivy_check you cannot call join_round in init, so to
             # start manual testing use impl.server.timeout
-            #call join_round(0);
+            #call join_round(1);
         }
 
         # environment interface
@@ -274,7 +278,7 @@ isolate impl = {
 
         # internal (called by init, timeout, or net.recv)
         action join_round(r:round) = {
-            assert currnd < r | 0 = r;
+            assert currnd < r | 1 = r;
             currnd := r;
             if self = leader_of(r) {
                 sent_2a := false;
@@ -330,6 +334,7 @@ isolate impl = {
         action send_1a = {
             var prep := new_msg(msg_kind.1a);
             call broadcast(prep);
+            call protocol.send_1a(currnd);
         }
         # internal (called in response to network)
         action handle_1a(prep:msg) = {
@@ -348,6 +353,10 @@ isolate impl = {
             prom.m_prop_round := maxrndprop_round; # XXX might be uninitialized; that's ok
             prom.m_prop_value := maxrndprop_value; # XXX might be uninitialized; that's ok
             call net.send(self, dst, prom);
+            call protocol.send_1b(
+                self,
+                maxrndprop_round if maxrndprop_isset else 0,
+                maxrndprop_value);
         }
         # internal (called in response to network)
         action handle_1b(prom:msg) = {
