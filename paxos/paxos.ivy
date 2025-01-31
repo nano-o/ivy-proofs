@@ -108,16 +108,15 @@ isolate protocol = {
         one_a(r) := true;
     }
 
-    action send_1b(n:node, r:round, maxr:round, maxv:value) = {
+    action send_1b(n:node, maxr:round, maxv:value) = {
         require maxr < current_round(n);
         require one_a(current_round(n));
         require ((maxr = 0 & forall R,V. ~(R < current_round(n) & vote(n,R,V))) |
            (maxr ~= 0 & (maxr < current_round(n) & vote(n,maxr,maxv)) &
            (forall R,V. (R  < current_round(n) & vote(n,R,V)) -> R <= maxr))
         );
-        current_round(n) := r;
-        one_b(n,r,maxr,maxv) := true;
-        call abs.join_round(n,r)
+        one_b(n,current_round(n),maxr,maxv) := true;
+        call abs.join_round(n,current_round(n))
     }
 
     action propose(r:round, q:quorum, maxr:round, v:value) = {
