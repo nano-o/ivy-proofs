@@ -228,6 +228,10 @@ isolate impl = {
     # ASSUMPTION: all nodes use the same leader_of function (so that only
     # one value is proposed by one node in each round)
 
+    interpret value -> bv[8]
+    type debug_t
+    interpret debug_t -> bv[8]
+
     object server(self:node) = {
 
         ### state variables
@@ -250,6 +254,8 @@ isolate impl = {
         function clientprop_value: value # initialized once by interface.propose
 
         ### transition actions
+
+        import action debug_(r:round, send_or_receive:debug_t, message_kind:debug_t)
 
         # internal
         after init {
@@ -320,6 +326,7 @@ isolate impl = {
         # internal (called by join_round)
         action send_1a = {
             var prep := new_msg(msg_kind.1a);
+            call debug_(currnd, 0, 1);
             call broadcast(prep);
         }
         # internal (called in response to network)
@@ -327,6 +334,7 @@ isolate impl = {
             assert prep.m_kind = msg_kind.1a;
             assert prep.m_currnd = currnd;
             assert prep.m_sender = self | self ~= leader_of(prep.m_currnd);
+            call debug_(currnd, 1, 1);
             call send_1b(prep.m_sender);
         }
 
@@ -338,6 +346,7 @@ isolate impl = {
             prom.m_prop_isset := maxrndprop_isset; # XXX might be false; that's ok
             prom.m_prop_round := maxrndprop_round; # XXX might be uninitialized; that's ok
             prom.m_prop_value := maxrndprop_value; # XXX might be uninitialized; that's ok
+            call debug_(currnd, 0, 11);
             call net.send(self, dst, prom);
         }
         # internal (called in response to network)
@@ -345,6 +354,7 @@ isolate impl = {
             assert prom.m_kind = msg_kind.1b;
             assert prom.m_currnd = currnd;
             assert self = leader_of(currnd);
+            call debug_(currnd, 1, 11);
             currnd_1b := node_set.add(currnd_1b, prom.m_sender);
             if prom.m_prop_isset & (~maxrndprop_isset | maxrndprop_round < prom.m_prop_round) {
                 maxrndprop_isset := true;
@@ -366,6 +376,7 @@ isolate impl = {
             prop.m_prop_round := currnd; # XXX not the round where maxrndprop_value was introduced
             prop.m_prop_value := maxrndprop_value if maxrndprop_isset else clientprop_value;
             if maxrndprop_isset | clientprop_isset {
+                call debug_(currnd, 0, 2);
                 call broadcast(prop);
             }
         }
@@ -374,6 +385,7 @@ isolate impl = {
             assert prop.m_kind = msg_kind.2a;
             assert prop.m_currnd = currnd;
             assert prop.m_sender = self | self ~= leader_of(prop.m_currnd);
+            call debug_(currnd, 1, 2);
             # since there is only one leader per round, and the leader can
             # broadcast only one 2a message, we will only handle one 2a
             # message, therefore we accept that proposal
@@ -391,6 +403,7 @@ isolate impl = {
             vote.m_prop_isset := true;
             vote.m_prop_round := maxrndprop_round; # XXX aka currnd
             vote.m_prop_value := maxrndprop_value;
+            call debug_(currnd, 0, 22);
             broadcast(vote);
         }
         # internal (called in response to network)
@@ -398,6 +411,7 @@ isolate impl = {
             assert vote.m_kind = msg_kind.2b;
             assert vote.m_currnd = currnd;
             assert vote.m_prop_value = maxrndprop_value; # FIXME: this can't be right
+            call debug_(currnd, 1, 22);
             currnd_2b := node_set.add(currnd_2b, vote.m_sender);
             if ~learned & node_set.majority(currnd_2b) {
                 learned := true;
