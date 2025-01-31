@@ -222,16 +222,13 @@ isolate impl = {
 
     # TODO: tie state of impl to isolate=protocol using invariants
 
+    # TODO: need some property of leader_of to say that it will be `self`
+    # for some round(s)
+    function leader_of(R:round):node
+    # ASSUMPTION: all nodes use the same leader_of function (so that only
+    # one value is proposed by one node in each round)
+
     object server(self:node) = {
-
-        ### constants
-
-        # TODO: need some property of leader_of to say that it will be `self`
-        # for some round(s)
-        function leader_of(R:round):node
-        # ASSUMPTION: all nodes use the same leader_of function (so that only
-        # one value is proposed by one node in each round)
-        definition leader_of(r:round):node = <<< r % (`node.max` + 1) >>>
 
         ### state variables
 
@@ -409,4 +406,8 @@ isolate impl = {
     }
 } with round, node_set, node
 
-extract imp(n:node) = impl.server(n), round, node_set, node
+object leader_of_impl = {
+    definition impl.leader_of(r:round) = <<< r % (`node.max` + 1) >>>
+}
+
+extract imp(n:node) = impl.server(n), round, node_set, node, leader_of_impl
