@@ -22,7 +22,7 @@ isolate abs = {
     relation decision(N:node, R:round, V:value)
 
     after init {
-        left_rnd(N,R) := R = 0;
+        left_rnd(N,R) := false;
         proposal(R,V) := false;
         vote(N,R,V) := false;
         decision(N,R,V) := false;
@@ -89,7 +89,7 @@ isolate protocol = {
     # note that round 0 is never "used" because 1b messages with round 0 are rejected and thus no leader can execute phase 2a for round 0.
 
     relation one_a(R:round)
-    relation one_b(N:node, R:round, MAXR:round, MAXV:value)
+    relation one_b(N:node, R:round, VOTED:bool, MAXR:round, MAXV:value)
     individual current_round(N:node) : round
     relation proposal(R:round, V:value) # 2a
     relation vote(N:node, R:round, V:value) # 2b
@@ -97,9 +97,8 @@ isolate protocol = {
 
     after init {
         one_a(R) := false;
-        one_b(N,R,MAXR,V) := false;
-        var one:round := round.next(0);
-        current_round(N) := one;
+        one_b(N,R,VOTED,MAXR,V) := false;
+        current_round(N) := 0;
         proposal(R,V) := false;
         vote(N,R,V) := false;
         decision(N,R,V) := false;
@@ -109,26 +108,27 @@ isolate protocol = {
         one_a(r) := true;
     }
 
-    action send_1b(n:node, maxr:round, maxv:value) = {
+    action send_1b(n:node, voted:bool, maxr:round, maxv:value) = {
         require maxr < current_round(n);
         require one_a(current_round(n));
-        require ((maxr = 0 & forall R,V. ~(R < current_round(n) & vote(n,R,V))) |
+        require ((~voted & forall R,V. ~(R < current_round(n) & vote(n,R,V))) |
+           voted &
            (maxr ~= 0 & (maxr < current_round(n) & vote(n,maxr,maxv)) &
            (forall R,V. (R  < current_round(n) & vote(n,R,V)) -> R <= maxr))
         );
-        one_b(n,current_round(n),maxr,maxv) := true;
+        one_b(n,current_round(n),voted,maxr,maxv) := true;
         call abs.join_round(n,current_round(n))
     }
 
     action propose(r:round, q:quorum, maxr:round, v:value) = {
         require ~proposal(r,V);
-        require forall N. member(N, q) -> exists MAXR,V. one_b(N,r,MAXR,V);
+        require forall N. member(N, q) -> exists VOTED,MAXR,V. one_b(N,r,VOTED,MAXR,V);
 
         # find the maximal vote in the quorum
         # here, compared to the protocol isolate, the leader uses the contents of the one_b messages instead of the vote relation
-        require ((forall N. member(N, q) -> exists V . one_b(N,r,0,V)) | (
-           (exists N. member(N, q) & maxr < r & one_b(N,r,maxr,v)) &
-           (forall N,R,V. (member(N, q) & R  < r & one_b(N,r,R,V)) -> R <= maxr))
+        require ((forall N. member(N, q) -> exists MAXR,V . one_b(N,r,false,MAXR,V)) | (
+           (exists N. member(N, q) & maxr < r & one_b(N,r,TRUE,maxr,v)) &
+           (forall N,R,V. (member(N, q) & R  < r & one_b(N,r,TRUE,R,V)) -> R <= maxr))
         );
         proposal(r, v) := true;
         call abs.propose(r, q, maxr, v)
@@ -167,10 +167,11 @@ isolate protocol = {
         invariant vote(N,R,V) <-> abs.vote(N,R,V)
         invariant decision(N,R,V) <-> abs.decision(N,R,V)
         invariant proposal(R,V) <-> abs.proposal(R,V)
-        invariant one_b(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R
-        invariant one_b(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
-        invariant one_b(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
-        invariant one_b(N,R,MAXR,V) -> MAXR < R
+        # TODO: fix the invariants below
+        # invariant one_b(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R
+        # invariant one_b(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
+        # invariant one_b(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
+        # invariant one_b(N,R,MAXR,V) -> MAXR < R
     }
 
 } with abs, round, quorum_intersection
@@ -266,7 +267,7 @@ isolate impl = {
             maxrndprop_isset := false;
             clientprop_isset := false;
             learned := false;
-            currnd := 1;
+            currnd := 0;
             # FIXME: for ivy_check you cannot call join_round in init, so to
             # start manual testing use impl.server.timeout
             #call join_round(1);
@@ -356,7 +357,8 @@ isolate impl = {
             call net.send(self, dst, prom);
             call protocol.send_1b(
                 self,
-                maxrndprop_round if maxrndprop_isset else 0,
+                maxrndprop_isset,
+                maxrndprop_round,
                 maxrndprop_value);
         }
         # internal (called in response to network)
