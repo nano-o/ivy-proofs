@@ -167,11 +167,10 @@ isolate protocol = {
         invariant vote(N,R,V) <-> abs.vote(N,R,V)
         invariant decision(N,R,V) <-> abs.decision(N,R,V)
         invariant proposal(R,V) <-> abs.proposal(R,V)
-        # TODO: fix the invariants below
-        # invariant one_b(N,R,MAXR,V) & current_round(N) = R2 -> R2 >= R
-        # invariant one_b(N,R,MAXR,V) & MAXR ~= 0 -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
-        # invariant one_b(N,R,0,V) & R2 < R -> ~abs.vote(N,R2,V2)
-        # invariant one_b(N,R,MAXR,V) -> MAXR < R
+        invariant one_b(N,R,VOTED,MAXR,V) & current_round(N) = R2 -> R2 >= R
+        invariant one_b(N,R,true,MAXR,V) -> abs.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~abs.vote(N,R2,V)))
+        invariant one_b(N,R,false,MAXR,V) & R2 < R -> ~abs.vote(N,R2,V2)
+        invariant one_b(N,R,VOTED,MAXR,V) -> MAXR < R
     }
 
 } with abs, round, quorum_intersection
@@ -227,7 +226,7 @@ isolate impl = {
     invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1b -> DST = leader_of(m_currnd(M))
     invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2a -> m_sender(M) = leader_of(m_currnd(M))
     # all the values in 2b (vote) proposals will be the same because acceptors
-    # only vote for the leader's prposed value (and there's only one leader)
+    # only vote for the leader's proposed value (and there's only one leader)
 
     invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1a -> protocol.one_a(m_currnd(M))
     invariant server.currnd(N) = protocol.current_round(N)
