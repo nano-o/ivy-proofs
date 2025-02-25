@@ -9,11 +9,6 @@ instance node_set : array_set_with_majority(node)
 type value
 instance round : unbounded_sequence
 
-relation member(N:node, Q:node_set)
-trusted isolate quorum_intersection = {
-    axiom forall Q1, Q2. exists N. member(N, Q1) & member(N, Q2)
-}
-
 # first, a very absract specification:
 isolate level_1 = {
     relation left_rnd(N:node, R:round) # true for rounds we left, and false for the current round, but otherwise unconstrained
@@ -34,12 +29,13 @@ isolate level_1 = {
     }
 
     action propose(r:round, q:node_set, maxr:round, v:value) = {
+        require node_set.majority(q);
         require ~proposal(r,V); # no proposal has been made in round r
-        require forall N, R . member(N, q) & R < r -> left_rnd(N,R); # members of q have left all rounds smaller than r
+        require forall N, R . node_set.member(N, q) & R < r -> left_rnd(N,R); # node_set.members of q have left all rounds smaller than r
 
-        require ((forall N,R,V. ~(member(N, q) & R < r & vote(N,R,V))) | ( # no member of q has voted before r, or
-           (exists N. member(N, q) & maxr < r & vote(N,maxr,v)) & # a member of q has voted for v in round maxr < r, and
-           (forall N,R,V. (member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr)) # all votes by members of q cast before round r were cast no later than round maxr
+        require ((forall N,R,V. ~(node_set.member(N, q) & R < r & vote(N,R,V))) | ( # no node_set.member of q has voted before r, or
+           (exists N. node_set.member(N, q) & maxr < r & vote(N,maxr,v)) & # a node_set.member of q has voted for v in round maxr < r, and
+           (forall N,R,V. (node_set.member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr)) # all votes by node_set.members of q cast before round r were cast no later than round maxr
         );
         proposal(r, v) := true
     }
@@ -51,7 +47,8 @@ isolate level_1 = {
     }
 
     action decide(n:node, r:round, v:value, q:node_set) = {
-        require forall N . member(N, q) -> vote(N, r, v);
+        require node_set.majority(q);
+        require forall N . node_set.member(N, q) -> vote(N, r, v);
         decision(n, r, v) := true
     }
 
@@ -71,15 +68,15 @@ isolate level_1 = {
         conjecture vote(N,R,V) -> proposal(R,V)
 
         # decisions come from quorums of votes:
-        conjecture forall R, V. (exists N. decision(N,R,V)) -> exists Q. forall N. member(N, Q) -> vote(N,R,V)
+        conjecture forall R, V. (exists N. decision(N,R,V)) -> exists Q. node_set.majority(Q) & forall N. node_set.member(N, Q) -> vote(N,R,V)
 
         # Properties of choosable and proposal
-        conjecture forall R1, R2, V1, V2, Q. R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
-            exists N . member(N,Q) & left_rnd(N,R1) & ~vote(N,R1,V1)
+        conjecture forall R1, R2, V1, V2, Q. node_set.majority(Q) & R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
+            exists N . node_set.member(N,Q) & left_rnd(N,R1) & ~vote(N,R1,V1)
 
     }
 
-} with round, quorum_intersection
+} with round, node_set.majority_iso
 
 # now the more concrete, but still abstract, specification:
 isolate level_2 = {
@@ -126,13 +123,14 @@ isolate level_2 = {
     action propose(r:round, v:value) = {
         require ~proposal(r,V);
         local q:node_set, maxr:round {
-            require forall N. member(N, q) -> exists VOTED,MAXR,V. one_b(N,r,VOTED,MAXR,V);
+            require node_set.majority(q);
+            require forall N. node_set.member(N, q) -> exists VOTED,MAXR,V. one_b(N,r,VOTED,MAXR,V);
 
             # find the maximal vote in the quorum
             # here, compared to the protocol isolate, the leader uses the contents of the one_b messages instead of the vote relation
-            require ((forall N. member(N, q) -> exists MAXR,V . one_b(N,r,false,MAXR,V)) | (
-            (exists N. member(N, q) & maxr < r & one_b(N,r,TRUE,maxr,v)) &
-            (forall N,R,V. (member(N, q) & R  < r & one_b(N,r,TRUE,R,V)) -> R <= maxr))
+            require ((forall N. node_set.member(N, q) -> exists MAXR,V . one_b(N,r,false,MAXR,V)) | (
+                (exists N. node_set.member(N, q) & maxr < r & one_b(N,r,TRUE,maxr,v)) &
+                (forall N,R,V. (node_set.member(N, q) & R  < r & one_b(N,r,TRUE,R,V)) -> R <= maxr))
             );
             proposal(r, v) := true;
             call level_1.propose(r, q, maxr, v)
@@ -147,16 +145,16 @@ isolate level_2 = {
     }
 
     action decide(n:node, r:round, v:value, q:node_set) = {
-        require forall N . member(N, q) -> vote(N, r, v);
+        require forall N . node_set.member(N, q) -> vote(N, r, v);
         decision(n, r, v) := true;
         call level_1.decide(n, r, v, q)
     }
 
-    export send_1a
-    export send_1b
-    export propose
-    export cast_vote
-    export decide
+    # export send_1a
+    # export send_1b
+    # export propose
+    # export cast_vote
+    # export decide
 
     specification {
         # safety property:
@@ -180,7 +178,7 @@ isolate level_2 = {
     invariant one_b(N,R,VOTED,MAXR,V) & current_round(N) = R2 -> R2 >= R
     invariant one_b(N,R,VOTED,MAXR,V) -> MAXR < R
 
-} with level_1, round, quorum_intersection
+} with level_1, round
 
 isolate interface(n:node) = {
     export action propose(v:value)
@@ -435,6 +433,8 @@ isolate impl = {
     invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2a -> level_2.proposal(m_prop_round(M), m_prop_value(M))
     invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2b -> level_2.vote(m_sender(M), m_prop_round(M), m_prop_value(M))
     invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1b -> level_2.one_b(m_sender(M), m_currnd(M), m_prop_isset(M), m_prop_round(M), m_prop_value(M))
+    invariant ~server(N).maxvote_isset -> ~level_2.vote(N,R,V)
+    invariant server(N).maxvote_isset -> level_2.vote(N,server(N).maxvote_round,server(N).maxvote_value)
 
     # other properties of the impl
     invariant net.spec.sent(M, DST) -> server(m_sender(M)).currnd >= m_currnd(M)

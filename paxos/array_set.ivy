@@ -45,7 +45,7 @@ module array_set_with_majority(range) = {
     }
 
     trusted isolate majority_iso = {
-        explicit invariant [majorities_intersect]
+        invariant [majorities_intersect]
             majority(S1) & majority(S2) -> exists N . member(N,S1) & member(N,S2)
 
         implementation {
