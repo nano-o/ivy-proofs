@@ -22,7 +22,7 @@ isolate interface(n:node) = {
             proposed(v) := true;
         }
         before decide {
-            require exists N. interface.proposed(N,v);
+            require exists N. interface.proposed(N,v); # TODO
             require interface.decided(N,V) -> V = v;
             decided(v) := true;
         }
@@ -67,7 +67,7 @@ isolate protocol = {
     invariant interface.decided(N,V) = abstract_protocol.decided(N,V)
     invariant (server(N).voted & V = server(N).candidate) = abstract_protocol.vote(N,V)
 
-    # if somebody's in my local voted-for-candidate set, then i've voted
+    # if somebody's in my local voted-for-candidate set, then I've voted
     invariant node_set.member(N2, server(N).voted_for_candidate) -> server(N).voted
     # if somebody's in my local voted-for-candidate set, then they voted for my candidate
     invariant node_set.member(N2, server(N).voted_for_candidate)
