@@ -54,30 +54,36 @@ isolate level_1 = {
 
     specification {
         # safety property:
-        conjecture (
+        invariant (
             decision(N1,R1,V1) &
             decision(N2,R2,V2)
         ) -> V1 = V2
+        proof {
+            assume node_set.majority_iso.majorities_intersect
+        }
     }
 
     # proposals are unique per round
-    conjecture proposal(R,V1) & proposal(R,V2) -> V1 = V2
+    invariant proposal(R,V1) & proposal(R,V2) -> V1 = V2
 
     # only vote for proposed values
-    conjecture vote(N,R,V) -> proposal(R,V)
+    invariant vote(N,R,V) -> proposal(R,V)
 
     private { # private because of quantifier alternation
 
         # decisions come from quorums of votes:
-        conjecture forall R, V. (exists N. decision(N,R,V)) -> exists Q. node_set.majority(Q) & forall N. node_set.member(N, Q) -> vote(N,R,V)
+        invariant forall R, V. (exists N. decision(N,R,V)) -> exists Q. node_set.majority(Q) & forall N. node_set.member(N, Q) -> vote(N,R,V)
 
         # Properties of choosable and proposal
-        conjecture forall R1, R2, V1, V2, Q. node_set.majority(Q) & R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
+        invariant forall R1, R2, V1, V2, Q. node_set.majority(Q) & R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
             exists N . node_set.member(N,Q) & left_rnd(N,R1) & ~vote(N,R1,V1)
+        proof {
+            assume node_set.majority_iso.majorities_intersect
+        }
 
     }
 
-} with round, node_set.majority_iso.majorities_intersect # TODO does not work...
+} with round, node_set.majority_iso.majorities_intersect
 
 # now the more concrete, but still abstract, specification:
 isolate level_2 = {
@@ -155,7 +161,7 @@ isolate level_2 = {
 
     specification {
         # safety property:
-        conjecture [safety] (
+        invariant [safety] (
           decision(N1,R1,V1) &
           decision(N2,R2,V2)
         ) -> V1 = V2
