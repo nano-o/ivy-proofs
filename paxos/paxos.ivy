@@ -93,8 +93,7 @@ isolate level_1 = {
 isolate level_2 = {
 
     # We now introduce explicit one_b messages that contain the maximum round at which the sender voted and the corresponding value.
-
-    # note that round 0 is never "used" because 1b messages with round 0 are rejected and thus no leader can execute phase 2a for round 0.
+    # We can also track the current round of each node explicitely without introducing a quantifier alternation cycle.
 
     relation one_b(N:node, R:round, VOTED:bool, MAXR:round, MAXV:value)
     individual current_round(N:node) : round
@@ -164,6 +163,7 @@ isolate level_2 = {
     }
 
     private {
+        # invariants that encode the refinement mapping:
         invariant current_round(N) = R & R <= R2 -> ~level_1.left_rnd(N,R2)
         invariant current_round(N) = R & R2 < R -> level_1.left_rnd(N,R2)
         invariant vote(N,R,V) <-> level_1.vote(N,R,V)
@@ -174,7 +174,7 @@ isolate level_2 = {
 
     }
 
-    # those invariants are useful to expose to the impl isolate:
+    # additional invariants that are useful to expose to the impl isolate:
     invariant one_b(N,R,VOTED,MAXR,V) -> current_round(N) >= R
     invariant one_b(N,R,true,MAXR,V) -> MAXR < R
     invariant one_b(N1,R1,true,MAXR,V1) & one_b(N2,R2,true,MAXR,V2) -> V1 = V2
@@ -230,7 +230,6 @@ type msg = struct {
 
 instance net : udp_simple(node, msg)
 
-
 isolate impl = {
 
     function leader_of(R:round):node # fixed function assigning a unique leader to each round
@@ -262,7 +261,6 @@ isolate impl = {
 
         ### transition actions
 
-        # internal
         after init {
             maxvote_isset := false;
             clientprop_isset := false;
@@ -275,7 +273,7 @@ isolate impl = {
             received_2b_from := node_set.emptyset();
         }
 
-        # environment interface
+        # timer interface
         implement timer.timeout { # start next round we're leader of
             var to := currnd.next();
             while (leader_of(to) ~= self)
@@ -486,7 +484,7 @@ isolate impl = {
 } with round, node_set, node, node.iter, net, interface, level_2
 
 object interpretations = {
-    definition impl.leader_of(r:round) = <<< r % (`node.max` + 1) >>>
+    definition impl.leader_of(r:round) = <<< r % (`node.max` + 1) >>> # this is inline C++
     interpret value -> bv[8]
 }
 
