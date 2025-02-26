@@ -49,7 +49,7 @@ module array_set_with_majority(range) = {
             majority(S1) & majority(S2) -> exists N . member(N,S1) & member(N,S2)
 
         implementation {
-            # TODO inline C++ implementation
+            # inline C++ implementation
             definition majority(s:t) = <<< `s`.repr.size() * 2 > `node.max` + 1 >>>
         }
     }
