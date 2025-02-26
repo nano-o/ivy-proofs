@@ -117,11 +117,10 @@ isolate level_2 = {
 
     # send 1b for current round
     action send_1b(n:node, voted:bool, maxr:round, maxv:value) = {
-        require ((~voted & forall R,V. ~(R < current_round(n) & vote(n,R,V))) |
-           voted &
-           (maxr ~= 0 & (maxr < current_round(n) & vote(n,maxr,maxv)) &
-           (forall R,V. (R  < current_round(n) & vote(n,R,V)) -> R <= maxr))
-        );
+        require (~voted & forall R,V. ~(R < current_round(n) & vote(n,R,V))) |
+            voted &
+            (maxr ~= 0 & (maxr < current_round(n) & vote(n,maxr,maxv)) &
+            (forall R,V. (R  < current_round(n) & vote(n,R,V)) -> R <= maxr));
         one_b(n,current_round(n),voted,maxr,maxv) := true;
     }
 
@@ -153,12 +152,6 @@ isolate level_2 = {
         call level_1.decide(n, r, v, q)
     }
 
-    # export send_1a
-    # export send_1b
-    # export propose
-    # export cast_vote
-    # export decide
-
     specification {
         # safety property:
         invariant [safety] (
@@ -178,7 +171,7 @@ isolate level_2 = {
 
     }
 
-    # those invariants are useful to expose to the impl:
+    # those invariants are useful to expose to the impl isolate:
     invariant one_b(N,R,VOTED,MAXR,V) -> current_round(N) >= R
     invariant one_b(N,R,true,MAXR,V) -> MAXR < R
     invariant one_b(N1,R1,true,MAXR,V1) & one_b(N2,R2,true,MAXR,V2) -> V1 = V2
@@ -241,8 +234,8 @@ isolate impl = {
 
         # round state, reinitialized every new round
         function sent_2a: bool
-        function currnd_1b: node_set # nodes from which we got a 1b message
-        function currnd_2b: node_set # nodes from which we got a 2b message
+        function received_1b_from: node_set # nodes from which we got a 1b message
+        function received_2b_from: node_set # nodes from which we got a 2b message
         function max1b_isset: bool
         function max1b_round: round
         function max1b_value: value
@@ -267,9 +260,10 @@ isolate impl = {
             learned := false;
             # NOTE we cannot call start_round (ivy bug?), so nothing will happen before someone times out of round 0
             currnd := 0;
-            currnd_1b := node_set.emptyset();
+            sent_2a := false;
+            received_1b_from := node_set.emptyset();
             max1b_isset := false;
-            currnd_2b := node_set.emptyset();
+            received_2b_from := node_set.emptyset();
         }
 
         # environment interface
@@ -281,9 +275,9 @@ isolate impl = {
         action start_round(r:round) = {
             currnd := r;
             call level_2.start_round(self, r);
-            currnd_1b := node_set.emptyset();
+            received_1b_from := node_set.emptyset();
             max1b_isset := false;
-            currnd_2b := node_set.emptyset();
+            received_2b_from := node_set.emptyset();
             sent_2a := false;
             if self = leader_of(r) {
                 call send_1a();
@@ -366,14 +360,13 @@ isolate impl = {
             assert prom.m_kind = msg_kind.1b;
             assert prom.m_currnd = currnd;
             assert self = leader_of(currnd);
-            currnd_1b := node_set.add(currnd_1b, prom.m_sender);
+            received_1b_from := node_set.add(received_1b_from, prom.m_sender);
             if prom.m_prop_isset & (~max1b_isset | max1b_round < prom.m_prop_round) {
                 max1b_isset := true;
                 max1b_round := prom.m_prop_round;
                 max1b_value := prom.m_prop_value;
             };
-            if ~sent_2a & node_set.majority(currnd_1b) {
-                call level_2.propose(currnd, currnd_1b, max1b_round, max1b_value if max1b_isset else clientprop_value);
+            if ~sent_2a & node_set.majority(received_1b_from) {
                 call send_2a();
             }
         }
@@ -389,6 +382,7 @@ isolate impl = {
                 prop.m_prop_value := max1b_value if max1b_isset else clientprop_value;
                 call broadcast(prop);
                 sent_2a := true;
+                call level_2.propose(currnd, received_1b_from, max1b_round, max1b_value if max1b_isset else clientprop_value);
             }
         }
 
@@ -421,8 +415,8 @@ isolate impl = {
         action handle_2b(vote:msg) = {
             assert vote.m_kind = msg_kind.2b;
             assert vote.m_currnd = currnd;
-            currnd_2b := node_set.add(currnd_2b, vote.m_sender);
-            if ~learned & node_set.majority(currnd_2b) {
+            received_2b_from := node_set.add(received_2b_from, vote.m_sender);
+            if ~learned & node_set.majority(received_2b_from) {
                 learned := true;
                 # call interface.decide(self, vote.m_prop_value);
             }
@@ -439,24 +433,22 @@ isolate impl = {
 
     # relation between impl state and abstract state:
     invariant server.currnd(N) = level_2.current_round(N)
-    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2a -> level_2.proposal(m_prop_round(M), m_prop_value(M))
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2a ->  level_2.proposal(m_prop_round(M), m_prop_value(M))
     invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2b -> level_2.vote(m_sender(M), m_prop_round(M), m_prop_value(M))
     invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1b -> level_2.one_b(m_sender(M), m_currnd(M), m_prop_isset(M), m_prop_round(M), m_prop_value(M))
     invariant ~server(N).maxvote_isset -> ~level_2.vote(N,R,V)
     invariant server(N).maxvote_isset -> level_2.vote(N,server(N).maxvote_round,server(N).maxvote_value)
-    invariant node_set.member(N2, server(N1).currnd_1b) -> level_2.current_round(N2) >= level_2.current_round(N1)
+    invariant node_set.member(N2, server(N1).received_1b_from) -> level_2.current_round(N2) >= level_2.current_round(N1)
+    invariant (server(leader_of(R)).currnd < R | (server(leader_of(R)).currnd = R & ~server(leader_of(R)).sent_2a)) -> ~level_2.proposal(R, V)
 
-    invariant node_set.member(N2, server(N1).currnd_1b) -> exists MAXR, V, B . level_2.one_b(N2, server(N1).currnd, B, MAXR, V)
-    invariant node_set.member(N2, server(N1).currnd_1b) & ~server(N1).max1b_isset -> exists MAXR, V . level_2.one_b(N2, server(N1).currnd, false, MAXR, V)
-    invariant node_set.member(N2, server(N1).currnd_1b) & server(N1).max1b_isset -> exists MAXR, V . level_2.one_b(N2, server(N1).currnd, false, MAXR, V) | (level_2.one_b(N2, server(N1).currnd, true, MAXR, V) & MAXR <= server(N1).max1b_round)
-    invariant server(N1).max1b_isset -> exists N2 . node_set.member(N2, server(N1).currnd_1b) & level_2.one_b(N2, server(N1).currnd, true, server(N1).max1b_round, server(N1).max1b_value) # TODO track witness to eliminate quantifier alternation
+    # 1b stuff:
+    invariant node_set.member(N2, server(N1).received_1b_from) -> exists MAXR, V, B . level_2.one_b(N2, server(N1).currnd, B, MAXR, V)
+    invariant node_set.member(N2, server(N1).received_1b_from) & ~server(N1).max1b_isset -> exists MAXR, V . level_2.one_b(N2, server(N1).currnd, false, MAXR, V)
+    invariant node_set.member(N2, server(N1).received_1b_from) & server(N1).max1b_isset -> exists MAXR, V . level_2.one_b(N2, server(N1).currnd, false, MAXR, V) | (level_2.one_b(N2, server(N1).currnd, true, MAXR, V) & MAXR <= server(N1).max1b_round)
+    invariant server(N1).max1b_isset -> exists N2 . node_set.member(N2, server(N1).received_1b_from) & level_2.one_b(N2, server(N1).currnd, true, server(N1).max1b_round, server(N1).max1b_value) # TODO track witness to eliminate quantifier alternation
 
     # other properties of the impl
-    invariant net.spec.sent(M, DST) -> server(m_sender(M)).currnd >= m_currnd(M)
-
-
-    # invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2a & server(m_sender(M)).currnd = m_currnd(M) -> server(m_sender(M)).sent_2a
-    # invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2b -> level_2.vote(m_sender(M), m_currnd(M), m_prop_value(M))
+    # invariant net.spec.sent(M, DST) -> server(m_sender(M)).currnd >= m_currnd(M)
 
 } with round, node_set, node, net, interface, level_2
 
