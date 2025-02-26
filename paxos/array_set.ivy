@@ -57,7 +57,7 @@ module array_set_with_majority(range) = {
     isolate iso = this with range
 }
 
-# uncomment to check:
+# uncomment to check in isolation:
 # instance elem : iterable
 # instance elem_set : array_set_with_majority(elem)
 # export elem_set.emptyset
