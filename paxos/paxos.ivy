@@ -1,3 +1,6 @@
+# Implementation of single-shot Paxos with proof of safety.
+# We use 2 refinements: level_1 -> level_2 -> impl
+
 #lang ivy1.8
 
 include order
