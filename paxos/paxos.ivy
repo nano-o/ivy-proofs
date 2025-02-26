@@ -285,6 +285,7 @@ isolate impl = {
 
         # internal (called by init, timeout, or net.recv)
         action start_round(r:round) = {
+            # call debug_prints.start_round(self,r);
             currnd := r;
             call level_2.start_round(self, r);
             received_1b_from := node_set.emptyset();
@@ -484,6 +485,11 @@ isolate impl = {
 object interpretations = {
     definition impl.leader_of(r:round) = <<< r % (`node.max` + 1) >>>
     interpret value -> bv[8]
+}
+
+object debug_prints = {
+    # messages can be printed in the REPL by calling those actions:
+    import action start_round(n:node, r:round)
 }
 
 extract imp(n:node) = impl.server(n), round, node_set, node, interpretations, net(n)
