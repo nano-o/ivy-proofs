@@ -1,0 +1,32 @@
+cabal-version: 3.0
+name: scp
+version: 0.1.0.0
+build-type: Custom
+
+custom-setup
+  setup-depends:
+    base ^>= 4.20,
+    cabal-doctest ^>= 1
+
+library
+    default-language: GHC2024
+    ghc-options: -Wall
+    hs-source-dirs: src
+    exposed-modules:
+        SCP
+    build-depends:
+        base ^>= 4.20,
+        containers ^>= 0.7,
+        nonempty-containers ^>= 0.3
+
+test-suite doctests
+    -- test-suite name must match name in Setup.hs
+    type: exitcode-stdio-1.0
+    default-language: GHC2024
+    ghc-options: -Wall
+    hs-source-dirs: test
+    main-is: Doctest.hs
+    build-depends:
+        base ^>= 4.20,
+        doctest ^>= 0.24,
+        QuickCheck ^>= 2.15
