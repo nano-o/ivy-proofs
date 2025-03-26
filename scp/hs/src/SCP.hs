@@ -15,7 +15,9 @@ import Data.Set.NonEmpty (NESet)
 import Data.Set.NonEmpty qualified as NESet
 
 import Data.Containers.ListUtils qualified as ListUtils
+import Data.Either qualified as Either
 import Data.Foldable qualified as Foldable
+import Data.List qualified as List
 
 -- $setup
 -- >>> s = Set.fromList
@@ -66,68 +68,70 @@ isQuorum candidate nodesSlices
 
 
 
--- | Take @n@ from a non-empty list, assuming that @n@ is greather than 0. Not
--- efficient.
---
--- >>> takeSome 3 (ne [1,2,3,4])
--- 1 :| [2,3]
---
--- >>> takeSome 0 (ne [1,2,3,4])
--- ... count must be greater than 0, ...
--- ...
-takeSome :: Int -> NonEmpty a -> NonEmpty a
-takeSome n xs
-    = maybe (error $ "takeSome: count must be greater than 0, got " ++ show n) id
-    . NonEmpty.nonEmpty
-    $ NonEmpty.take n xs
-
 -- | @allNchooseK xs k@ returns all unique choices of @k@ elements from @xs@,
--- assuming that @k@ is greater than 0. Not efficient.
+-- if @k@ is in the range [0, @length xs@]. Not efficient.
 --
--- >>> ne__ $ allNchooseK (ne [1,2,3]) 2
--- [[1,2],[2,3],[1,3]]
+-- >>> allNchooseK [1,2,3] 0
+-- Just [[]]
 --
--- >>> ne__ $ allNchooseK (ne [1,2,3]) 0
--- ...Exception...
--- ...
-allNchooseK :: (Eq a, Ord a) => NonEmpty a -> Int -> NonEmpty (NonEmpty a)
+-- >>> allNchooseK [1,2,3] 1
+-- Just [[1],[2],[3]]
+--
+-- >>> allNchooseK [1,2,3] 2
+-- Just [[1,2],[2,3],[1,3]]
+--
+-- >>> allNchooseK [1,2,3] 3
+-- Just [[1,2,3]]
+--
+-- >>> allNchooseK [1,2,3] 4
+-- Nothing
+allNchooseK :: Ord a => [a] -> Int -> Maybe [[a]]
 allNchooseK xs k
-    = NonEmpty.nub
-    . fmap (NonEmpty.sort . takeSome k)
-    $ NonEmpty.permutations1 xs
+    | 0 <= k && k <= length xs = Just . List.nub . fmap (List.sort . take k) $ List.permutations xs
+    | otherwise = Nothing
 
 
 
 data QSet nid
-    = QSetNode { threshold::Int, validators::NESet nid, inner::QSet nid }
-    | QSetLeaf { threshold::Int, validators::NESet nid }
+    = QSetNode { threshold::Int, validators::[nid], inner::[QSet nid] }
+    | QSetLeaf { threshold::Int, validators::[nid] }
 
-fromQSet_ :: (Show nid, Ord nid) => QSet nid -> NonEmpty (NonEmpty nid)
+fromQSet_ :: (Show nid, Ord nid) => QSet nid -> [[nid]]
 fromQSet_ = \case
-    QSetLeaf{..} -> allNchooseK (NESet.toList validators) threshold
+    QSetLeaf{..} ->
+        maybe (error "unreachable") id
+        $ allNchooseK validators (clampThreshold validators threshold)
     QSetNode{..} ->
-        let xs = (Left <$> NESet.toList validators) <> (Right <$> fromQSet_ inner) in
-        traceShow (fmap NonEmpty.toList <$> NonEmpty.toList xs) $
-        flatten . traceShowId <$> allNchooseK xs threshold
+        let pool = (Left <$> validators) ++ (Right . fromQSet_ <$> inner) in
+        concatMap flatten
+        . traceShow pool
+        . maybe (error "unreachable") id
+        $ allNchooseK pool (clampThreshold pool threshold)
   where
-    flatten = \case
-        Left n        :| []   -> n :| []
-        Left n        :| x:xs -> n `NonEmpty.cons` flatten (x:|xs)
-        Right (n:|ns) :| []   -> n :| ns
-        Right (n:|ns) :| x:xs -> (n:|ns) <> flatten (x:|xs)
+    -- pool = [a, b, (QSet 2 [c, d] []), (QSet 2 [e, f] [])]
+    clampThreshold validators threshold = min (length validators) (max 0 threshold)
+    flatten :: [Either nid [[nid]]] -> [[nid]]
+    flatten xs =
+        let (elts, muls) = Either.partitionEithers xs in
+        _1
+        --Left n        :| []   -> n :| []
+        --Left n        :| x:xs -> n `NonEmpty.cons` flatten (x:|xs)
+        --Right (n:|ns) :| []   -> n :| ns
+        --Right (n:|ns) :| x:xs -> (n:|ns) <> flatten (x:|xs)
 
--- | Reify the sets represented by a QSet.
+---- | Reify the sets represented by a QSet.
+----
+---- !!>>> q__ $ fromQSet (QSetLeaf 2 (q [1,2,3]))
+---- !![[1,2],[1,3],[2,3]]
+----
+---- >>> q__ $ fromQSet (QSetNode 2 (q "ab") (QSetLeaf 2 (q "cde")))
+---- ["ab","acd","ace","ade","bcd","bce","bde"]
+--fromQSet :: (Show nid, Ord nid) => QSet nid -> QSlices nid
+--fromQSet = NESet.fromList . fmap NESet.fromList . fromQSet_
 --
--- !!>>> q__ $ fromQSet (QSetLeaf 2 (q [1,2,3]))
--- !![[1,2],[1,3],[2,3]]
---
--- >>> q__ $ fromQSet (QSetNode 2 (q "ab") (QSetLeaf 2 (q "cde")))
--- ["ab","acd","ace","ade","bcd","bce","bde"]
-fromQSet :: (Show nid, Ord nid) => QSet nid -> QSlices nid
-fromQSet = NESet.fromList . fmap NESet.fromList . fromQSet_
-
-----toQSet :: QSlices nid -> QSet nid
-----toQSet
+------toQSet :: QSlices nid -> QSet nid
+------toQSet
 
 
---newtype QSetFlat nid = QSetFlat (Int, NESet (Either (QSetFlat nid) nid))
+newtype QSetFlat nid = QSetFlat (Int, [Either (QSetFlat nid) nid]
+
