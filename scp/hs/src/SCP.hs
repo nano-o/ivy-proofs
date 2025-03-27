@@ -25,7 +25,7 @@ import Data.Maybe qualified as Maybe
 -- >>> m = Map.fromList
 -- >>> q = NESet.unsafeFromSet . Set.fromList
 -- >>> q_ = Foldable.toList
--- >>> q__ = map Foldable.toList . Foldable.toList
+-- >>> q__ = map Foldable.toList . Foldable.toList . unQSlices
 -- >>> ne = maybe (error "list was empty") id . NonEmpty.nonEmpty
 -- >>> ne_ = NonEmpty.toList
 -- >>> ne__ = map NonEmpty.toList . NonEmpty.toList
@@ -36,10 +36,13 @@ import Data.Maybe qualified as Maybe
 type Slice nid = NESet nid
 
 -- | Quorum slices of a node
-type QSlices nid = NESet (Slice nid)
+newtype QSlices nid = QSlices {unQSlices :: NESet (Slice nid)} deriving Show
 
 -- | Mapping of nodes to their quorum slices
 type NodesSlices nid = Map nid (QSlices nid)
+
+class QuorumSlices q nid where
+    isQuorum :: Foldable f => Slice nid -> f (q nid) -> Bool
 
 
 
@@ -47,25 +50,25 @@ type NodesSlices nid = Map nid (QSlices nid)
 -- on the @slices@ learned in protocol messages: Is at least one slice from
 -- each node in the @candidate@ quorum?
 --
--- >>> aSlices = q [q [1,2], q [2,3], q [3,4]]
--- >>> bSlices = q [q [0,1,2], q [2,3,4]]
--- >>> cSlices = q [q [0,1], q [2,3], q [4,5]]
+-- >>> aSlices = QSlices $ q [q [1,2], q [2,3], q [3,4]]
+-- >>> bSlices = QSlices $ q [q [0,1,2], q [2,3,4]]
+-- >>> cSlices = QSlices $ q [q [0,1], q [2,3], q [4,5]]
 --
 -- >>> q [1,2,3] `isQuorum` [aSlices, bSlices]
--- Just False
+-- False
 --
 -- >>> q [1,2,3] `isQuorum` [bSlices, cSlices]
--- Just False
+-- False
 --
 -- >>> q [1,2,3] `isQuorum` [cSlices, aSlices]
--- Just True
+-- True
 --
--- >>> q [1,2,3] `isQuorum` [] -- no nodes
--- Nothing
-isQuorum :: (Foldable f, Ord nid) => NESet nid -> f (QSlices nid) -> Maybe Bool
-isQuorum candidate nodesSlices
-    | null nodesSlices = Nothing
-    | otherwise = Just $ all (any (\slice -> slice `NESet.isSubsetOf` candidate)) nodesSlices
+-- >>> q [1,2,3] `isQuorum` ([] :: [QSlices Int]) -- Edge case: no nodes
+-- False
+instance Ord nid => QuorumSlices QSlices nid where
+    isQuorum candidate nodesSlices
+        | null nodesSlices = False
+        | otherwise = all (any (\slice -> slice `NESet.isSubsetOf` candidate) . unQSlices) nodesSlices
 
 
 
@@ -148,22 +151,22 @@ fromQSet_ = \case
 
 -- | Reify the sets represented by a QSet.
 --
--- >>> q__ $ fromQSet (QSetLeaf 2 [1,2,3])
+-- >>> q__ <$> fromQSet (QSetLeaf 2 [1,2,3])
 -- Just [[1,2],[1,3],[2,3]]
 --
--- >>> q__ $ fromQSet (QSetNode 2 "ab" [QSetLeaf 2 "cde"])
+-- >>> q__ <$> fromQSet (QSetNode 2 "ab" [QSetLeaf 2 "cde"])
 -- Just ["ab","acd","ace","ade","bcd","bce","bde"]
 --
--- !>>> q__ $ fromQSet (QSetNode 2 "ab" [QSetLeaf 0 "cde"])
+-- !>>> q__ <$> fromQSet (QSetNode 2 "ab" [QSetLeaf 0 "cde"])
 -- !Just [FIXME
 fromQSet :: (Show nid, Ord nid) => QSet nid -> Maybe (QSlices nid)
-fromQSet = f . Maybe.mapMaybe f . fromQSet_
+fromQSet = fmap QSlices . f . Maybe.mapMaybe f . fromQSet_
   where
     f :: Ord a => [a] -> Maybe (NESet a)
     f = fmap NESet.fromList . NonEmpty.nonEmpty
 
-isQuorum_ :: Foldable f => QSlices nid -> f (QSet nid) -> Bool
-isQuorum_ = undefined -- TODO
+instance QuorumSlices QSet nid where
+    isQuorum = undefined -- TODO
 
 
 
