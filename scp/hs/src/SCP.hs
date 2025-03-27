@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC "-Wno-unused-imports" #-}
 {-# LANGUAGE RecordWildCards #-}
 module SCP where
 import Debug.Trace
@@ -71,24 +72,32 @@ isQuorum candidate nodesSlices
 -- | @allNchooseK xs k@ returns all unique choices of @k@ elements from @xs@,
 -- if @k@ is in the range [0, @length xs@]. Not efficient.
 --
+-- >>> allNchooseK [] 0
+-- [[]]
+--
 -- >>> allNchooseK [1,2,3] 0
--- Just [[]]
+-- [[]]
 --
 -- >>> allNchooseK [1,2,3] 1
--- Just [[1],[2],[3]]
+-- [[1],[2],[3]]
 --
 -- >>> allNchooseK [1,2,3] 2
--- Just [[1,2],[2,3],[1,3]]
+-- [[1,2],[1,3],[2,3]]
 --
 -- >>> allNchooseK [1,2,3] 3
--- Just [[1,2,3]]
+-- [[1,2,3]]
 --
 -- >>> allNchooseK [1,2,3] 4
--- Nothing
-allNchooseK :: Ord a => [a] -> Int -> Maybe [[a]]
-allNchooseK xs k
-    | 0 <= k && k <= length xs = Just . List.nub . fmap (List.sort . take k) $ List.permutations xs
-    | otherwise = Nothing
+-- ...cannot choose 4 elements from a list of length 3
+-- ...
+allNchooseK :: Ord a => [a] -> Int -> [[a]]
+allNchooseK pool k
+    | 0 < k, k < n, x:xs <- pool = ((x :) <$> allNchooseK xs (k - 1)) ++ allNchooseK xs k
+    | 0 == k = [[]]
+    | n == k = [pool]
+    | otherwise = error $ "cannot choose "++show k++" elements from a list of length "++show (n)
+  where
+    n = length pool
 
 
 
@@ -96,28 +105,44 @@ data QSet nid
     = QSetNode { threshold::Int, validators::[nid], inner::[QSet nid] }
     | QSetLeaf { threshold::Int, validators::[nid] }
 
+-- | Threshold-clamped interpretation of @QSet@ to a list of all possible lists.
+--
+-- >>> fromQSet_ (QSetLeaf 99 "") -- Edge case: threshold greater than size of validator list
+-- [""]
+--
+-- >>> fromQSet_ (QSetLeaf 0 "abc") -- Edge case: threshold zero despite validators being present
+-- [""]
+--
+-- >>> fromQSet_ (QSetLeaf 2 "abc")
+-- ["ab","ac","bc"]
+--
+-- >>> fromQSet_ (QSetNode 2 "x" [QSetLeaf 2 "abc"])
+-- ...
+-- ["xab","xac","xbc"]
+--
+-- >>> fromQSet_ (QSetNode 2 "xy" [QSetLeaf 2 "abc"])
+-- ...
+-- ["xy","xab","xac","xbc","yab","yac","ybc"]
+--
+-- >>> fromQSet_ (QSetNode 2 "" [QSetLeaf 2 "abc", QSetLeaf 1 "e", QSetLeaf 1 "f"])
+-- ["abe","ace","bce","abf","acf","bcf","ef"]
 fromQSet_ :: (Show nid, Ord nid) => QSet nid -> [[nid]]
 fromQSet_ = \case
     QSetLeaf{..} ->
-        maybe (error "unreachable") id
-        $ allNchooseK validators (clampThreshold validators threshold)
+        allNchooseK validators (clampThreshold validators threshold)
     QSetNode{..} ->
         let pool = (Left <$> validators) ++ (Right . fromQSet_ <$> inner) in
-        concatMap flatten
-        . traceShow pool
-        . maybe (error "unreachable") id
-        $ allNchooseK pool (clampThreshold pool threshold)
+        concatMap flatten $ allNchooseK pool (clampThreshold pool threshold)
   where
-    -- pool = [a, b, (QSet 2 [c, d] []), (QSet 2 [e, f] [])]
-    clampThreshold validators threshold = min (length validators) (max 0 threshold)
+    clampThreshold validators =
+        max 0 . min (length validators)
     flatten :: [Either nid [[nid]]] -> [[nid]]
-    flatten xs =
-        let (elts, muls) = Either.partitionEithers xs in
-        _1
-        --Left n        :| []   -> n :| []
-        --Left n        :| x:xs -> n `NonEmpty.cons` flatten (x:|xs)
-        --Right (n:|ns) :| []   -> n :| ns
-        --Right (n:|ns) :| x:xs -> (n:|ns) <> flatten (x:|xs)
+    flatten =
+        foldr (flip cross) [[]]
+    cross :: [[nid]] -> Either nid [[nid]] -> [[nid]]
+    cross slices = \case
+        Left x -> (x:) <$> slices
+        Right xs -> (++) <$> xs <*> slices
 
 ---- | Reify the sets represented by a QSet.
 ----
