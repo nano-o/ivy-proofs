@@ -162,8 +162,15 @@ fromQSet = f . Maybe.mapMaybe f . fromQSet_
     f :: Ord a => [a] -> Maybe (NESet a)
     f = fmap NESet.fromList . NonEmpty.nonEmpty
 
+isQuorum_ :: Foldable f => QSlices nid -> f (QSet nid) -> Bool
+isQuorum_ = undefined -- TODO
 
 
 
-newtype QSetFlat nid = QSetFlat (Int, [Either (QSetFlat nid) nid]
+newtype QSetFlat nid = QSetFlat (Int, [Either (QSetFlat nid) nid])
 
+intoQSetFlat :: QSet nid -> QSetFlat nid
+intoQSetFlat = undefined -- TODO
+
+fromQSetFlat :: QSetFlat nid -> QSet nid
+fromQSetFlat = undefined -- TODO
