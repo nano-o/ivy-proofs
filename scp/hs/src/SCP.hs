@@ -19,6 +19,7 @@ import Data.Containers.ListUtils qualified as ListUtils
 import Data.Either qualified as Either
 import Data.Foldable qualified as Foldable
 import Data.List qualified as List
+import Data.Maybe qualified as Maybe
 
 -- $setup
 -- >>> s = Set.fromList
@@ -144,18 +145,23 @@ fromQSet_ = \case
         Left x -> (x:) <$> slices
         Right xs -> (++) <$> xs <*> slices
 
----- | Reify the sets represented by a QSet.
-----
----- !!>>> q__ $ fromQSet (QSetLeaf 2 (q [1,2,3]))
----- !![[1,2],[1,3],[2,3]]
-----
----- >>> q__ $ fromQSet (QSetNode 2 (q "ab") (QSetLeaf 2 (q "cde")))
----- ["ab","acd","ace","ade","bcd","bce","bde"]
---fromQSet :: (Show nid, Ord nid) => QSet nid -> QSlices nid
---fromQSet = NESet.fromList . fmap NESet.fromList . fromQSet_
+-- | Reify the sets represented by a QSet.
 --
-------toQSet :: QSlices nid -> QSet nid
-------toQSet
+-- >>> q__ $ fromQSet (QSetLeaf 2 [1,2,3])
+-- Just [[1,2],[1,3],[2,3]]
+--
+-- >>> q__ $ fromQSet (QSetNode 2 "ab" [QSetLeaf 2 "cde"])
+-- Just ["ab","acd","ace","ade","bcd","bce","bde"]
+--
+-- !>>> q__ $ fromQSet (QSetNode 2 "ab" [QSetLeaf 0 "cde"])
+-- !Just [FIXME
+fromQSet :: (Show nid, Ord nid) => QSet nid -> Maybe (QSlices nid)
+fromQSet = f . Maybe.mapMaybe f . fromQSet_
+  where
+    f :: Ord a => [a] -> Maybe (NESet a)
+    f = fmap NESet.fromList . NonEmpty.nonEmpty
+
+
 
 
 newtype QSetFlat nid = QSetFlat (Int, [Either (QSetFlat nid) nid]
