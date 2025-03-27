@@ -66,9 +66,9 @@ class QuorumSlices q nid where
 -- >>> q [1,2,3] `isQuorum` ([] :: [QSlices Int]) -- Edge case: no nodes
 -- False
 instance Ord nid => QuorumSlices QSlices nid where
-    isQuorum candidate nodesSlices
-        | null nodesSlices = False
-        | otherwise = all (any (\slice -> slice `NESet.isSubsetOf` candidate) . unQSlices) nodesSlices
+    isQuorum candidate nodesSlices =
+        not (null nodesSlices) &&
+        all (any (\slice -> slice `NESet.isSubsetOf` candidate) . unQSlices) nodesSlices
 
 
 
@@ -166,7 +166,13 @@ fromQSet = fmap QSlices . f . Maybe.mapMaybe f . fromQSet_
     f = fmap NESet.fromList . NonEmpty.nonEmpty
 
 instance QuorumSlices QSet nid where
-    isQuorum = undefined -- TODO
+    isQuorum candidate nodesSlices =
+        not (null nodesSlices) &&
+        all (`anySliceIsSubsetOf` candidate) nodesSlices
+
+-- |
+anySliceIsSubsetOf :: QSet nid -> Slice nid -> Bool
+anySliceIsSubsetOf = undefined -- TODO
 
 
 
