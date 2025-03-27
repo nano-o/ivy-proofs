@@ -90,7 +90,7 @@ isQuorum candidate nodesSlices
 -- >>> allNchooseK [1,2,3] 4
 -- ...cannot choose 4 elements from a list of length 3
 -- ...
-allNchooseK :: Ord a => [a] -> Int -> [[a]]
+allNchooseK :: [a] -> Int -> [[a]]
 allNchooseK pool k
     | 0 < k, k < n, x:xs <- pool = ((x :) <$> allNchooseK xs (k - 1)) ++ allNchooseK xs k
     | 0 == k = [[]]
@@ -126,7 +126,7 @@ data QSet nid
 --
 -- >>> fromQSet_ (QSetNode 2 "" [QSetLeaf 2 "abc", QSetLeaf 1 "e", QSetLeaf 1 "f"])
 -- ["abe","ace","bce","abf","acf","bcf","ef"]
-fromQSet_ :: (Show nid, Ord nid) => QSet nid -> [[nid]]
+fromQSet_ :: QSet nid -> [[nid]]
 fromQSet_ = \case
     QSetLeaf{..} ->
         allNchooseK validators (clampThreshold validators threshold)
@@ -134,6 +134,8 @@ fromQSet_ = \case
         let pool = (Left <$> validators) ++ (Right . fromQSet_ <$> inner) in
         concatMap flatten $ allNchooseK pool (clampThreshold pool threshold)
   where
+    -- FIXME: use different clamps in the two cases above; the node case should
+    -- be |validators|+|pool| but also we need to filter the pool?
     clampThreshold validators =
         max 0 . min (length validators)
     flatten :: [Either nid [[nid]]] -> [[nid]]
