@@ -1,7 +1,6 @@
 {-# OPTIONS_GHC "-Wno-unused-imports" #-}
 {-# LANGUAGE RecordWildCards #-}
 module SCP where
-import Debug.Trace
 
 import Data.List.NonEmpty (NonEmpty((:|)))
 import Data.List.NonEmpty qualified as NonEmpty
