@@ -109,6 +109,22 @@ data QSet nid
     = QSetNode { threshold::Int, validators::[nid], inner::[QSet nid] }
     | QSetLeaf { threshold::Int, validators::[nid] }
 
+intoQSet_ :: [Slice nid] -> QSet nid
+-- i have two sets AB and BC
+--
+-- i could represent this as "either set" with
+-- (QSetNode 1 [] [QSetLeaf 2 [AB], QSetLeaf 2 [BC])
+--
+-- but B is in common between them so i could pull it out
+-- (QSetNode 2 [B] [QSetLeaf 1 [A], QSetLeaf 1 [C]])
+--
+-- but the singleton leafs can be combined
+-- (QSetNode 2 [B] [QSetLeaf 1 [AC]])
+--
+-- this example does not address how we might end up with alternatives
+intoQSet_ = undefined
+
+
 -- | Threshold-clamped interpretation of @QSet@ to a list of all possible lists.
 --
 -- >>> fromQSet_ (QSetLeaf 99 "") -- Edge case: threshold greater than size of validator list
