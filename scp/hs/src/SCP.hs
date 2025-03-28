@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC "-Wno-unused-imports" #-}
+{-# LANGUAGE GHC2024 #-}
 {-# LANGUAGE RecordWildCards #-}
 module SCP where
 
@@ -165,14 +166,27 @@ fromQSet = fmap QSlices . f . Maybe.mapMaybe f . fromQSet_
     f :: Ord a => [a] -> Maybe (NESet a)
     f = fmap NESet.fromList . NonEmpty.nonEmpty
 
-instance QuorumSlices QSet nid where
+-- |
+instance Ord nid => QuorumSlices QSet nid where
     isQuorum candidate nodesSlices =
         not (null nodesSlices) &&
         all (`anySliceIsSubsetOf` candidate) nodesSlices
 
--- |
-anySliceIsSubsetOf :: QSet nid -> Slice nid -> Bool
-anySliceIsSubsetOf = undefined -- TODO
+-- | Is any slice represented by the QSet a subset of the given slice?
+anySliceIsSubsetOf :: Ord nid => QSet nid -> Slice nid -> Bool
+anySliceIsSubsetOf qs candidate =
+    case qs of
+        QSetLeaf{..} ->
+            threshold <= ctCandidatesIn validators
+        QSetNode{..} ->
+            let ctInnersSat = length . filter id $ map (`anySliceIsSubsetOf` candidate) inner in
+            threshold <= ctCandidatesIn validators + ctInnersSat
+  where
+    ctCandidatesIn validators =
+        Set.size $
+            Set.intersection
+                (Set.fromList validators)
+                (NESet.toSet candidate)
 
 
 
