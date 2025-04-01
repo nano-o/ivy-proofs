@@ -42,13 +42,15 @@ class NaiveQuorumChecker : public QuorumChecker< NodeId, NaiveQuorumSlices<NodeI
 
     public:
 
-        virtual Slice<NodeId> findQuorum(std::map<NodeId, XS> m) {
+        virtual Slice<NodeId> findQuorum(std::map<NodeId, XS> m)
+        {
             X x;
             // TODO
             return x;
         }
 
-        virtual bool isQuorumSlice(X, XS) {
+        virtual bool isQuorumSlice(X, XS)
+        {
             return false; // TODO
         }
 
@@ -60,18 +62,22 @@ template<class NodeId, class QuorumSlices>
 void local_node_example(
         QuorumChecker<NodeId, QuorumSlices> const& checker,
         std::map<NodeId, QuorumSlices> const& nodeStates,
-        QuorumSlices const& localNodeSlices) {
+        QuorumSlices const& localNodeSlices)
+{
     Slice<NodeId> quorum = checker.findQuorum(nodeStates);
-    if(quorum.empty()){
+    if (quorum.empty())
+    {
         std::cout << "No quorum set in the given node states." << std::endl;
         return;
     }
     std::cout << "Found a quorum of " << quorum.size() << " nodes." << std::endl;
-    if(checker.isQuorumSlice(quorum, localNodeSlices)){
+
+    if (checker.isQuorumSlice(quorum, localNodeSlices))
+    {
         std::cout << "The local node recognizes this quorum." << std::endl;
-    }else{
-        std::cout << "The local node doesn't recognize this quorum." << std::endl;
+        return;
     }
+    std::cout << "The local node doesn't recognize this quorum." << std::endl;
 }
 
 int main()
