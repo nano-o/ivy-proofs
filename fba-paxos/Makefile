@@ -7,10 +7,18 @@ XDRC = xdrc
 %.h: %.x
 	$(XDRC) -hh -pedantic -o $@ $<
 
-all: $(SRC_X_FILES:.x=.h) test
+all: $(SRC_X_FILES:.x=.h) test is_quorum
 
 clean:
-	rm -f $(SRC_X_FILES:.x=.h) test
+	rm -f $(SRC_X_FILES:.x=.h) test is_quorum
 
 test: TestQuorumSet.cpp $(SRC_X_FILES:.x=.h)
-	$(CXX) $(CXXFLAGS) -o test TestQuorumSet.cpp $(LIBS)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
+
+is_quorum: QuorumSlicesCollection.cpp $(SRC_X_FILES:.x=.h)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
+
+watch:
+	export PKG_CONFIG_PATH="$$PKG_CONFIG_PATH:$$HOME/.local/lib/pkgconfig"; \
+	export PATH="$$PATH:$$HOME/.local/bin"; \
+	git ls-files | entr -c time bash -c 'make is_quorum && ./is_quorum'
