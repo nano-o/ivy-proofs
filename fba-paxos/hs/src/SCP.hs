@@ -43,7 +43,17 @@ newtype QSlices nid = QSlices {unQSlices :: NESet (Slice nid)} deriving Show
 type NodesSlices nid = Map nid (QSlices nid)
 
 class QuorumSlices q nid where
+
+    -- | Is the candidate-slice a quorum for all the nodes' quorum-slices?
     isQuorum :: Foldable f => Slice nid -> f (q nid) -> Bool
+
+    -- | Is the candidate-slice a quorum for a single node's quorum-slices?
+    -- (I.e. Is any one of the quorum-slices a subset of the candidate slice?)
+    isQuorumSlice :: Slice nid -> q nid -> Bool
+
+    -- | Search for a quorum among the given nodes (and their last known
+    -- quorum-slices).
+    findQuorum :: Map nid (q nid) -> Maybe (Slice nid)
 
 
 
@@ -69,7 +79,17 @@ class QuorumSlices q nid where
 instance Ord nid => QuorumSlices QSlices nid where
     isQuorum candidate nodesSlices =
         not (null nodesSlices) &&
-        all (any (\slice -> slice `NESet.isSubsetOf` candidate) . unQSlices) nodesSlices
+        all (isQuorumSlice candidate) nodesSlices
+
+    isQuorumSlice candidate (QSlices quorumSlices) =
+        any (`NESet.isSubsetOf` candidate) quorumSlices
+
+    findQuorum m = do
+        candidate <- NESet.nonEmptySet $ Map.keysSet m
+        let m' = Map.filter (isQuorumSlice candidate) m
+        if Map.size m == Map.size m'
+        then return candidate
+        else findQuorum m'
 
 
 
