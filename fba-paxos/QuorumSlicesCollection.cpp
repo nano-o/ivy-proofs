@@ -49,16 +49,16 @@ class NaiveQuorumChecker : public QuorumChecker< NID, NaiveQuorumSlices<NID> >
 
     public:
 
-        virtual Slice<NID> findQuorum(std::map<NID, XS> m)
+        virtual X findQuorum(std::map<NID, XS> const& m)
         {
             X x;
             // TODO
             return x;
         }
 
-        virtual bool isQuorumSlice(X candidate, XS quorumSlices)
+        virtual bool isQuorumSlice(X const& candidate, XS const& quorumSlices)
         {
-            for (X& slice : quorumSlices)
+            for (auto const& slice : quorumSlices)
             {
                 // a⊆b ≅ (∅ ≡ a⁄b)
                 X extras(nodeid_cmp);
