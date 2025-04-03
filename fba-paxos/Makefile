@@ -18,7 +18,7 @@ test: TestQuorumSet.cpp $(SRC_X_FILES:.x=.h)
 is_quorum: QuorumChecker.cpp $(SRC_X_FILES:.x=.h)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
 
-watch:
+watch-%:
 	export PKG_CONFIG_PATH="$$PKG_CONFIG_PATH:$$HOME/.local/lib/pkgconfig"; \
 	export PATH="$$PATH:$$HOME/.local/bin"; \
-	git ls-files | entr -c time bash -c 'make is_quorum && ./is_quorum'
+	git ls-files | entr -c time bash -c 'make $* && ./$*'
