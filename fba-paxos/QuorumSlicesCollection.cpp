@@ -51,9 +51,26 @@ class NaiveQuorumChecker : public QuorumChecker< NID, NaiveQuorumSlices<NID> >
 
         virtual X findQuorum(std::map<NID, XS> const& m)
         {
-            X x;
-            // TODO
-            return x;
+            X candidate(nodeid_cmp);
+            for (auto const& kv : m)
+            {
+                candidate.insert(kv.first);
+            }
+            // remove nodes that do not recognize the quorum candidate
+            int size_before_filtering;
+            do
+            {
+                size_before_filtering = candidate.size();
+                for (auto const& node : candidate) // std::erase_if in c++20
+                {
+                    if (!isQuorumSlice(candidate, m[node]))
+                    {
+                        candidate.erase(node); // XXX possible iterator invalidation
+                    }
+                }
+            }
+            while(size_before_filtering != candidate.size());
+            return candidate;
         }
 
         virtual bool isQuorumSlice(X const& candidate, XS const& quorumSlices)
