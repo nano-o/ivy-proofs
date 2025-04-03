@@ -16,7 +16,7 @@ bool nodeid_cmp(stellar::NodeID const& a, stellar::NodeID const& b)
 // (interface)
 
 template<class NID>
-using Slice = std::set<NID>;
+using Slice = std::set<NID, decltype(nodeid_cmp)>;
 
 template<class NID, class QuorumSlices> class QuorumChecker
 {
@@ -61,7 +61,7 @@ class NaiveQuorumChecker : public QuorumChecker< NID, NaiveQuorumSlices<NID> >
             for (X& slice : quorumSlices)
             {
                 // a⊆b ≅ (∅ ≡ a⁄b)
-                std::set<stellar::NodeID, decltype(nodeid_cmp)*> extras(nodeid_cmp);
+                X extras(nodeid_cmp);
                 //X extras; // gives cmp error
                 std::set_difference(slice.begin(), slice.end(),
                                     candidate.begin(), candidate.end(),
