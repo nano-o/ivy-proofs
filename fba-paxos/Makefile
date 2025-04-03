@@ -15,7 +15,7 @@ clean:
 test: TestQuorumSet.cpp $(SRC_X_FILES:.x=.h)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
 
-is_quorum: QuorumSlicesCollection.cpp $(SRC_X_FILES:.x=.h)
+is_quorum: QuorumChecker.cpp $(SRC_X_FILES:.x=.h)
 	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
 
 watch:
