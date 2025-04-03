@@ -6,6 +6,13 @@
 #include <vector>
 
 
+// HACK: Ought to be some way to sort NodeID, but this is probably not it.
+bool nodeid_cmp(stellar::NodeID const& a, stellar::NodeID const& b)
+{
+    return a.ed25519() < b.ed25519();
+}
+
+
 // (interface)
 
 template<class NID>
@@ -49,9 +56,23 @@ class NaiveQuorumChecker : public QuorumChecker< NID, NaiveQuorumSlices<NID> >
             return x;
         }
 
-        virtual bool isQuorumSlice(X, XS)
+        virtual bool isQuorumSlice(X candidate, XS quorumSlices)
         {
-            return false; // TODO
+            for (X& slice : quorumSlices)
+            {
+                // a⊆b ≅ (∅ ≡ a⁄b)
+                std::set<stellar::NodeID, decltype(nodeid_cmp)*> extras(nodeid_cmp);
+                //X extras; // gives cmp error
+                std::set_difference(slice.begin(), slice.end(),
+                                    candidate.begin(), candidate.end(),
+                                    std::inserter(extras, extras.begin()),
+                                    nodeid_cmp);
+                if (extras.empty())
+                {
+                    return true;
+                }
+            }
+            return false;
         }
 
         // TODO: is-blocking-set function?
