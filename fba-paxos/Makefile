@@ -18,6 +18,9 @@ test: TestQuorumSet.cpp $(SRC_X_FILES:.x=.h)
 is_quorum: QuorumChecker.cpp $(SRC_X_FILES:.x=.h)
 	$(CXX) $(CXXFLAGS) -o $@ $(filter-out %.h,$^) $(LIBS)
 
+generate_test_data: TestData.cpp $(SRC_X_FILES:.x=.h)
+	$(CXX) $(CXXFLAGS) -o $@ $(filter-out %.h,$^) $(LIBS)
+
 watch-%:
 	export PKG_CONFIG_PATH="$$PKG_CONFIG_PATH:$$HOME/.local/lib/pkgconfig"; \
 	export PATH="$$PATH:$$HOME/.local/bin"; \
