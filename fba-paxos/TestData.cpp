@@ -9,7 +9,7 @@ using json = nlohmann::json;
 stellar::SCPQuorumSet load_qset(json qset)
 {
     stellar::SCPQuorumSet x;
-    // actually populate the thing
+    // TODO: actually populate the thing
     return x;
 }
 
@@ -21,7 +21,9 @@ int main (int argc, char ** argv)
         std::string pk = element["publicKey"];
         auto qset = load_qset(element["quorumSet"]);
         std::cout << xdr::xdr_to_string(qset, pk.c_str());
-        // TODO: also convert to binary
-        // TODO: also output to file
+
+        xdr::msg_ptr m = xdr::xdr_to_msg(qset);
+        std::FILE* fd = std::fopen((pk + ".xdr").c_str(), "wb");
+        std::fwrite(m->raw_data(), sizeof(char), m->raw_size(), fd);
     }
 }
