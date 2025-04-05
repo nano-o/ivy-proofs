@@ -22,7 +22,8 @@ bool nodeid_cmp(stellar::NodeID const& a, stellar::NodeID const& b)
 template<class NID>
 using Slice = std::set<NID, decltype(nodeid_cmp)*>;
 
-template<class NID, class QuorumSlices> class QuorumChecker
+template<class NID, class QuorumSlices>
+class QuorumChecker
 {
     public:
         virtual ~QuorumChecker() {}
