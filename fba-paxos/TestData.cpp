@@ -1,3 +1,4 @@
+#include <sys/stat.h>
 #include <iostream>
 #include <data/json.hpp>
 #include <xdrpp/marshal.h>
@@ -38,6 +39,90 @@ stellar::SCPQuorumSet load_jqset(json jqset)
     return qset;
 }
 
+bool nid_eq(stellar::NodeID const& a, stellar::NodeID const& b)
+{
+    // FIXME: distinguish the cases
+    return a.ed25519() == b.ed25519();
+}
+
+bool qset_eq(stellar::SCPQuorumSet const& a, stellar::SCPQuorumSet const& b)
+{
+    if (a.threshold != b.threshold ||
+        a.validators.size() != b.validators.size() ||
+        a.innerSets.size() != b.innerSets.size())
+        return false;
+
+    for(int i=0; i<a.validators.size(); i+=1)
+    {
+        if (!nid_eq(a.validators[i], b.validators[i]))
+            return false;
+    }
+    for(int i=0; i<a.innerSets.size(); i+=1)
+    {
+        if(!qset_eq(a.innerSets[i], b.innerSets[i]))
+            return false;
+    }
+    return true;
+}
+
+// Write out xdr data to a path, in network-message format.
+template<class XDR_TYPE>
+size_t dump_xdr(XDR_TYPE const& xdr_value, std::string path)
+{
+    xdr::msg_ptr m = xdr::xdr_to_msg(xdr_value);
+    auto fd = std::fopen(path.c_str(), "wb");
+    size_t w_count = std::fwrite(m->raw_data(), sizeof(char), m->raw_size(), fd);
+    if(std::ferror(fd))
+    {
+        std::perror((std::string("dump_xdr to '")+path+std::string("' failed")).c_str());
+    }
+    else if (m->raw_size() != w_count)
+    {
+        std::cerr << "wrote " << w_count << " to '" << path << "' but expected to write " << m->raw_size() << std::endl;
+    }
+    std::fflush(fd);
+    std::fclose(fd);
+    return w_count;
+}
+
+// Read xdr data (in network-message format) from a path. Return bytes read on
+// success or -1 on failure.
+template<class XDR_TYPE>
+size_t load_xdr(std::string path, XDR_TYPE& xdr_value)
+{
+    struct stat st;
+    if (0 != stat(path.c_str(), &st))
+    {
+        perror(("failed to stat '"+path+"'").c_str());
+        return -1;
+    }
+    else if (st.st_size < 4)
+    {
+        std::cerr << "size of '" << path << "' is too small to be an xdr network message" << std::endl;
+        return -1;
+    }
+    char buf[st.st_size];
+    auto fd = std::fopen(path.c_str(), "rb");
+    size_t r_count = std::fread(buf, sizeof(buf[0]), st.st_size, fd);
+    if (std::ferror(fd))
+    {
+        perror(("read error for '"+path+"'").c_str());
+        return -1;
+    }
+    else if (r_count != st.st_size)
+    {
+        perror(("didn't read all of '"+path+"'").c_str());
+        return -1;
+    }
+    // copy buf into a msg of correct length (alloc function excludes 4 byte
+    // length) because unmarshal requires that
+    xdr::msg_ptr m = xdr::message_t::alloc(r_count - 4);
+    std::copy(buf, buf + r_count, m->raw_data());
+    xdr::xdr_from_msg(m, xdr_value);
+    return r_count;
+}
+
+
 int main (int argc, char ** argv)
 {
     std::cout << "Parses a json array of {publicKey:JSON,quorumSet:QSET} on stdin. Each is output to a separate xdr file." << std::endl;
@@ -48,32 +133,10 @@ int main (int argc, char ** argv)
         auto qset = load_jqset(element["quorumSet"]);
         std::cout << xdr::xdr_to_string(qset, pk.c_str());
 
-        size_t w_count = 0;
-        { // write
-            xdr::msg_ptr m = xdr::xdr_to_msg(qset);
-            auto fd = std::fopen((pk + ".xdr").c_str(), "wb");
-            w_count = std::fwrite(m->raw_data(), sizeof(char), m->raw_size(), fd);
-            assert(m->raw_size() == w_count);
-            std::fflush(fd);
-            std::fclose(fd);
-        }
-        { // compare for equality
-            stellar::SCPQuorumSet qset2;
-            { // read
-                assert(w_count <= 4096);
-                std::array<char, 4096> buf = {};
-                auto fd = std::fopen((pk + ".xdr").c_str(), "rb");
-                size_t r_count = std::fread(buf.data(), sizeof(buf[0]), 4096, fd);
-                assert(!std::ferror(fd));
-                assert(std::feof(fd));
-                assert(w_count == r_count);
-                // copy buf into a msg of correct length (alloc function
-                // excludes 4 byte length) because unmarshal requires that
-                xdr::msg_ptr msg = xdr::message_t::alloc(r_count - 4);
-                std::copy(buf.data(), buf.data() + r_count, msg->raw_data());
-                xdr::xdr_from_msg(msg, qset2);
-                // TODO: assert equality
-            }
-        }
+        stellar::SCPQuorumSet qset2 = {};
+        size_t w_count = dump_xdr(qset, pk + ".xdr");
+        size_t r_count = load_xdr(pk + ".xdr", qset2);
+        assert(w_count == r_count);
+        assert(qset_eq(qset, qset2));
     }
 }
