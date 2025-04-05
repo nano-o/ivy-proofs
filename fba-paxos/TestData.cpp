@@ -6,7 +6,7 @@
 
 using json = nlohmann::json;
 
-// JSON string to XDR NodeID.
+// Convert a JSON string-value to an XDR NodeID.
 stellar::NodeID load_jnid(json jnid)
 {
     xdr::opaque_array<32> key = {};
@@ -21,7 +21,8 @@ stellar::NodeID load_jnid(json jnid)
     return nid;
 }
 
-// JSON {theshold:number, validators:[string], innerQuorumSets:[qset]} to XDR SCPQuorumSet.
+// Convert a JSON {theshold:number, validators:[string],
+// innerQuorumSets:[qset]} object to an XDR SCPQuorumSet.
 stellar::SCPQuorumSet load_jqset(json jqset)
 {
     stellar::SCPQuorumSet qset;
