@@ -4,6 +4,7 @@ int main (int argc, char ** argv)
 {
     std::cout
         << "Parse a json array of {publicKey:JSON,quorumSet:QSET} on stdin."
+        << ' '
         << "Each is output to a separate xdr file in the data/ directory."
         << std::endl;
 
@@ -14,10 +15,13 @@ int main (int argc, char ** argv)
         auto qset = load_jqset(element["quorumSet"]);
         std::cout << "Output: " << xdr::xdr_to_string(qset, pk.c_str());
 
-        std::string path = pk + ".xdr";
+        std::string path = "data/" + pk + ".xdr";
         stellar::SCPQuorumSet qset2 = {};
         size_t w_count = dump_xdr(qset, path);
+        std::cout << "Wrote: " << path << std::endl;
+
         size_t r_count = load_xdr(path, qset2);
+        std::cout << "Read: " << path << std::endl;
         assert(w_count == r_count);
         assert(qset_eq(qset, qset2));
     }
