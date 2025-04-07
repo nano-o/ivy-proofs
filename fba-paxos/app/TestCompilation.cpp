@@ -1,6 +1,29 @@
 #include <xdrpp/types.h>
 #include <xdr/Stellar-SCP.h>
 #include <iostream>
+#include <libscp/QuorumChecker.hpp>
+
+template<class NID, class QuorumSlices>
+void local_node_example(
+        QuorumChecker<NID, QuorumSlices> const& checker,
+        std::map<NID, QuorumSlices> const& nodeStates,
+        QuorumSlices const& localNodeSlices)
+{
+    Slice<NID> quorum = checker.findQuorum(nodeStates);
+    if (quorum.empty())
+    {
+        std::cout << "No quorum set in the given node states." << std::endl;
+        return;
+    }
+    std::cout << "Found a quorum of " << quorum.size() << " nodes." << std::endl;
+
+    if (checker.isQuorumSlice(quorum, localNodeSlices))
+    {
+        std::cout << "The local node recognizes this quorum." << std::endl;
+        return;
+    }
+    std::cout << "The local node doesn't recognize this quorum." << std::endl;
+}
 
 int main() {
     stellar::SCPQuorumSet quorumSet;
@@ -34,6 +57,8 @@ int main() {
         std::cout << "  InnerSet Threshold: " << inner.threshold << std::endl;
         std::cout << "  InnerSet Validators: " << inner.validators.size() << std::endl;
     }
+
+    NaiveQuorumChecker<stellar::NodeID> checker;
 
     return 0;
 }
