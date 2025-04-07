@@ -13,12 +13,15 @@ SRC_EXE = $(wildcard app/*.cpp)
 all: $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out)
 
 clean:
-	rm -vf $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out)
+	rm -vf $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out) $(SRC_HPP_FILES:libscp/%.hpp=%.o)
 
 %.out: app/%.cpp $(SRC_X_FILES:.x=.h) $(SRC_HPP_FILES)
 	$(CXX) $(CXXFLAGS) -o $@ $(filter-out %.h %.hpp,$^) $(LIBS)
 
+%.o: libscp/%.hpp $(SRC_X_FILES:.x=.h)
+	$(CXX) $(CXXFLAGS) -o $@ -c $(filter-out %.h,$^) $(LIBS)
+
 watch-%:
 	export PKG_CONFIG_PATH="$$PKG_CONFIG_PATH:$$HOME/.local/lib/pkgconfig"; \
 	export PATH="$$PATH:$$HOME/.local/bin"; \
-	git ls-files | entr -c time bash -c 'make $* && ./$*'
+	git ls-files | entr -c time bash -c 'make $*'
