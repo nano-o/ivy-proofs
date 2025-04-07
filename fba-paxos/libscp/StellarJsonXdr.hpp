@@ -1,9 +1,12 @@
+#ifndef INCLUDE_STELLAR_JSON_XDR_HPP_
+#define INCLUDE_STELLAR_JSON_XDR_HPP_
+
 #include <sys/stat.h>
 #include <iostream>
-#include <data/json.hpp>
+#include <libscp/vendor/json.hpp>
 #include <xdrpp/marshal.h>
 #include <xdrpp/printer.h>
-#include "xdr/Stellar-SCP.h"
+#include <xdr/Stellar-SCP.h>
 
 using json = nlohmann::json;
 
@@ -122,21 +125,4 @@ size_t load_xdr(std::string path, XDR_TYPE& xdr_value)
     return r_count;
 }
 
-
-int main (int argc, char ** argv)
-{
-    std::cout << "Parses a json array of {publicKey:JSON,quorumSet:QSET} on stdin. Each is output to a separate xdr file." << std::endl;
-    for (json const& element: json::parse(std::cin))
-    {
-        std::cout << element << std::endl;
-        std::string pk = element["publicKey"];
-        auto qset = load_jqset(element["quorumSet"]);
-        std::cout << xdr::xdr_to_string(qset, pk.c_str());
-
-        stellar::SCPQuorumSet qset2 = {};
-        size_t w_count = dump_xdr(qset, pk + ".xdr");
-        size_t r_count = load_xdr(pk + ".xdr", qset2);
-        assert(w_count == r_count);
-        assert(qset_eq(qset, qset2));
-    }
-}
+#endif // INCLUDE_STELLAR_JSON_XDR_HPP_

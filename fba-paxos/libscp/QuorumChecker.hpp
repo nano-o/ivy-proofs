@@ -1,3 +1,6 @@
+#ifndef INCLUDE_QUORUM_CHECKER_HPP_
+#define INCLUDE_QUORUM_CHECKER_HPP_
+
 #include <xdrpp/types.h>
 #include "xdr/Stellar-SCP.h"
 #include <iostream>
@@ -5,19 +8,15 @@
 #include <set>
 #include <vector>
 
-
 // HACK: Ought to be some way to sort NodeID, but this is probably not it.
 //
-// NOTE: the std::set and std::map types in this file all have <...,
-// decltype(nodeid_cmp)*> because stellar::NodeID doesn't have operator<
+// NOTE: the std::set and std::map types in this file all have
+// <...,decltype(nodeid_cmp)*> because stellar::NodeID doesn't have operator<
 // defined. It's pretty messy.
 bool nodeid_cmp(stellar::NodeID const& a, stellar::NodeID const& b)
 {
     return a.ed25519() < b.ed25519();
 }
-
-
-// (interface)
 
 template<class NID>
 using Slice = std::set<NID, decltype(nodeid_cmp)*>;
@@ -39,10 +38,6 @@ class QuorumChecker
         // TODO: is-blocking-set function?
 };
 
-
-// (a naive implementation)
-
-// Quorum slices, stored naively.
 template<class NID>
 using NaiveQuorumSlices = std::vector< Slice<NID> >;
 
@@ -99,33 +94,4 @@ class NaiveQuorumChecker : public QuorumChecker< NID, NaiveQuorumSlices<NID> >
         // TODO: is-blocking-set function?
 };
 
-
-template<class NID, class QuorumSlices>
-void local_node_example(
-        QuorumChecker<NID, QuorumSlices> const& checker,
-        std::map<NID, QuorumSlices> const& nodeStates,
-        QuorumSlices const& localNodeSlices)
-{
-    Slice<NID> quorum = checker.findQuorum(nodeStates);
-    if (quorum.empty())
-    {
-        std::cout << "No quorum set in the given node states." << std::endl;
-        return;
-    }
-    std::cout << "Found a quorum of " << quorum.size() << " nodes." << std::endl;
-
-    if (checker.isQuorumSlice(quorum, localNodeSlices))
-    {
-        std::cout << "The local node recognizes this quorum." << std::endl;
-        return;
-    }
-    std::cout << "The local node doesn't recognize this quorum." << std::endl;
-}
-
-int main()
-{
-    NaiveQuorumChecker<stellar::NodeID> checker;
-    //local_node_example(checker); // TODO some inputs
-
-    // TODO: do another matching the types in xdr/Stellar-SCP.h
-}
+#endif // INCLUDE_QUORUM_CHECKER_HPP_

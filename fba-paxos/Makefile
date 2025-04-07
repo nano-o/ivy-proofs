@@ -1,25 +1,22 @@
 CXX = g++
 CXXFLAGS = -std=c++11 `pkg-config --cflags xdrpp` -I.
 LIBS = `pkg-config --libs xdrpp`
-SRC_X_FILES = xdr/Stellar-SCP.x xdr/Stellar-types.x
 XDRC = xdrc
+
+SRC_X_FILES = $(wildcard xdr/*.x)
+SRC_HPP_FILES = $(wildcard libscp/*.hpp vendor/*.hpp)
+SRC_EXE = $(wildcard app/*.cpp)
 
 %.h: %.x
 	$(XDRC) -hh -pedantic -o $@ $<
 
-all: $(SRC_X_FILES:.x=.h) test is_quorum
+all: $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out)
 
 clean:
-	rm -f $(SRC_X_FILES:.x=.h) test is_quorum
+	rm -vf $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out)
 
-test: TestQuorumSet.cpp $(SRC_X_FILES:.x=.h)
-	$(CXX) $(CXXFLAGS) -o $@ $< $(LIBS)
-
-is_quorum: QuorumChecker.cpp $(SRC_X_FILES:.x=.h)
-	$(CXX) $(CXXFLAGS) -o $@ $(filter-out %.h,$^) $(LIBS)
-
-generate_test_data: TestData.cpp $(SRC_X_FILES:.x=.h)
-	$(CXX) $(CXXFLAGS) -o $@ $(filter-out %.h,$^) $(LIBS)
+%.out: app/%.cpp $(SRC_X_FILES:.x=.h) $(SRC_HPP_FILES)
+	$(CXX) $(CXXFLAGS) -o $@ $(filter-out %.h %.hpp,$^) $(LIBS)
 
 watch-%:
 	export PKG_CONFIG_PATH="$$PKG_CONFIG_PATH:$$HOME/.local/lib/pkgconfig"; \

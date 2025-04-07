@@ -1,5 +1,5 @@
 #include <xdrpp/types.h>
-#include "xdr/Stellar-SCP.h"
+#include <xdr/Stellar-SCP.h>
 #include <iostream>
 
 int main() {
