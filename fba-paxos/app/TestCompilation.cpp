@@ -2,6 +2,7 @@
 #include <xdr/Stellar-SCP.h>
 #include <iostream>
 #include <libscp/QuorumChecker.hpp>
+#include <libscp/QSetQuorumChecker.hpp>
 
 template<class NID, class QuorumSlices>
 void local_node_example(
@@ -59,6 +60,7 @@ int main() {
     }
 
     NaiveQuorumChecker<stellar::NodeID> checker;
+    QSetQuorumChecker checkerB;
 
     return 0;
 }
