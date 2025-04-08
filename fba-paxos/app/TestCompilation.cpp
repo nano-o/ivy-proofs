@@ -1,8 +1,10 @@
 #include <xdrpp/types.h>
 #include <xdr/Stellar-SCP.h>
 #include <iostream>
+#include <libscp/StellarJsonXdr.hpp>
 #include <libscp/QuorumChecker.hpp>
 #include <libscp/QSetQuorumChecker.hpp>
+#include <libscp/NaiveQuorumChecker.hpp>
 
 template<class NID, class QuorumSlices>
 void local_node_example(
