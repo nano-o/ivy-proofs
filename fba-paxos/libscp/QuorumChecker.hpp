@@ -38,6 +38,13 @@ class QuorumChecker
         // TODO: is-blocking-set function?
 };
 
+template<class NID, class QuorumSlices>
+bool isQuorum(QuorumChecker<NID, QuorumSlices>& qc, std::map<NID, QuorumSlices, decltype(nodeid_cmp)*> const& m)
+{
+    Slice<NID> q = qc.findQuorum(m);
+    return q.size() == m.size();
+}
+
 template<class NID>
 using NaiveQuorumSlices = std::vector< Slice<NID> >;
 
