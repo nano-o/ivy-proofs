@@ -24,4 +24,4 @@ clean:
 watch-%:
 	export PKG_CONFIG_PATH="$$PKG_CONFIG_PATH:$$HOME/.local/lib/pkgconfig"; \
 	export PATH="$$PATH:$$HOME/.local/bin"; \
-	git ls-files | entr -c time bash -c 'make $*'
+	git ls-files | entr -c bash -c 'make $*'
