@@ -50,16 +50,9 @@ class QSetQuorumChecker : public QuorumChecker< stellar::NodeID, stellar::SCPQuo
                                   std::inserter(cs_and_vs, cs_and_vs.begin()),
                                   nodeid_cmp);
 
-            if (qset.innerSets.empty())
-            {
-                return qset.threshold <= cs_and_vs.size();
-            }
-            else
-            {
-                auto count_sat = std::count_if(qset.innerSets.begin(), qset.innerSets.end(),
-                        [&](XS const& x){ return containsQuorumSlice(candidate, x); });
-                return qset.threshold <= cs_and_vs.size() + count_sat;
-            }
+            auto count_sat = std::count_if(qset.innerSets.begin(), qset.innerSets.end(),
+                    [&](XS const& x){ return containsQuorumSlice(candidate, x); });
+            return qset.threshold <= cs_and_vs.size() + count_sat;
         }
 };
 
