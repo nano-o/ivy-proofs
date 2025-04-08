@@ -16,10 +16,10 @@ int main (int argc, char ** argv)
         std::cout << "Output: " << xdr::xdr_to_string(qset, pk.c_str());
 
         std::string path = "data/" + pk + ".xdr";
-        stellar::SCPQuorumSet qset2 = {};
         size_t w_count = dump_xdr(qset, path);
         std::cout << "Wrote: " << path << std::endl;
 
+        stellar::SCPQuorumSet qset2 = {};
         size_t r_count = load_xdr(path, qset2);
         std::cout << "Read: " << path << std::endl;
         assert(w_count == r_count);
