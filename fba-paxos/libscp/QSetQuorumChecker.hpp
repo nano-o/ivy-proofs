@@ -25,7 +25,7 @@ class QSetQuorumChecker : public QuorumChecker< stellar::NodeID, stellar::SCPQuo
                 size_before_filtering = candidate.size();
                 for (auto const& node : candidate) // std::erase_if in c++20
                 {
-                    if (!isQuorumSlice(candidate, m.find(node)->second))
+                    if (!containsQuorumSlice(candidate, m.find(node)->second))
                     {
                         candidate.erase(node); // XXX possible iterator invalidation
                     }
@@ -35,7 +35,7 @@ class QSetQuorumChecker : public QuorumChecker< stellar::NodeID, stellar::SCPQuo
             return candidate;
         }
 
-        virtual bool isQuorumSlice(X const& candidate, XS const& qset)
+        virtual bool containsQuorumSlice(X const& candidate, XS const& qset)
         {
             // This implementation allocates a lot more than
             // https://github.com/stellar/stellar-core/blob/c1746e764983020a725415b017ba0863e15292ec/src/scp/LocalNode.cpp#L93-L122
@@ -57,7 +57,7 @@ class QSetQuorumChecker : public QuorumChecker< stellar::NodeID, stellar::SCPQuo
             else
             {
                 auto count_sat = std::count_if(qset.innerSets.begin(), qset.innerSets.end(),
-                        [&](XS const& x){ return this->isQuorumSlice(candidate, x); });
+                        [&](XS const& x){ return containsQuorumSlice(candidate, x); });
                 return qset.threshold <= cs_and_vs.size() + count_sat;
             }
         }

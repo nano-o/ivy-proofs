@@ -33,7 +33,7 @@ class QuorumChecker
 
         // Is the candidate slice a quorum for the given quorum-slices? (I.e.
         // Is any one of the quorum-slices a subset of the candidate slice?)
-        virtual bool isQuorumSlice(Slice<NID> const&, QuorumSlices const&) = 0;
+        virtual bool containsQuorumSlice(Slice<NID> const&, QuorumSlices const&) = 0;
 
         // TODO: is-blocking-set function?
 };
@@ -70,7 +70,7 @@ class NaiveQuorumChecker : public QuorumChecker< NID, NaiveQuorumSlices<NID> >
                 size_before_filtering = candidate.size();
                 for (auto const& node : candidate) // std::erase_if in c++20
                 {
-                    if (!isQuorumSlice(candidate, m.find(node)->second))
+                    if (!containsQuorumSlice(candidate, m.find(node)->second))
                     {
                         candidate.erase(node); // XXX possible iterator invalidation
                     }
@@ -80,7 +80,7 @@ class NaiveQuorumChecker : public QuorumChecker< NID, NaiveQuorumSlices<NID> >
             return candidate;
         }
 
-        virtual bool isQuorumSlice(X const& candidate, XS const& quorumSlices)
+        virtual bool containsQuorumSlice(X const& candidate, XS const& quorumSlices)
         {
             for (auto const& slice : quorumSlices)
             {
