@@ -12,7 +12,7 @@ SRC_EXE = $(wildcard app/*.cpp)
 %.h: %.x
 	$(XDRC) -hh -pedantic -o $@ $<
 
-all: $(SRC_EXE:app/%.cpp=%.out)
+all: $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out)
 
 clean:
 	rm -vf $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out) $(SRC_HPP_FILES:libscp/%.hpp=%.o)
@@ -20,7 +20,7 @@ clean:
 	rm -vf data/*.xdr
 
 test: all
-	./GenTestData.out < data/conflicted.json
+	./GenTestData.out < data/conflicted.
 	./TestCompilation.out
 
 %.out: app/%.cpp $(SRC_X_FILES:.x=.h) $(SRC_HPP_FILES)
