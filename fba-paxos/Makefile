@@ -1,3 +1,5 @@
+.PHONY: all clean test
+
 CXX = g++
 CXXFLAGS = -std=c++11 `pkg-config --cflags xdrpp` -I.
 LIBS = `pkg-config --libs xdrpp`
@@ -10,12 +12,16 @@ SRC_EXE = $(wildcard app/*.cpp)
 %.h: %.x
 	$(XDRC) -hh -pedantic -o $@ $<
 
-all: $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out)
+all: $(SRC_EXE:app/%.cpp=%.out)
 
 clean:
 	rm -vf $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out) $(SRC_HPP_FILES:libscp/%.hpp=%.o)
 	rm -vfr $(SRC_EXE:app/%.cpp=%.out.dSYM/)
 	rm -vf data/*.xdr
+
+test: all
+	./GenTestData.out < data/conflicted.json
+	./TestCompilation.out
 
 %.out: app/%.cpp $(SRC_X_FILES:.x=.h) $(SRC_HPP_FILES)
 	$(CXX) $(CXXFLAGS) -g -o $@ $(filter-out %.h %.hpp,$^) $(LIBS)
