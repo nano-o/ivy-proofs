@@ -208,6 +208,10 @@ instance Ord nid => QuorumSlices QSet nid where
         not (null nodesSlices) &&
         all (`anySliceIsSubsetOf` candidate) nodesSlices
 
+    isQuorumSlice = flip anySliceIsSubsetOf
+
+    findQuorum = _1
+
 -- | Is any slice represented by the QSet a subset of the given slice?
 anySliceIsSubsetOf :: Ord nid => QSet nid -> Slice nid -> Bool
 anySliceIsSubsetOf qs candidate =
