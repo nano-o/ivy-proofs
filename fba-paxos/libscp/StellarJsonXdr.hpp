@@ -11,7 +11,7 @@
 using json = nlohmann::json;
 
 // Convert a JSON string-value to an XDR NodeID.
-stellar::NodeID load_jnid(json jnid)
+stellar::NodeID conv_jnid(json jnid)
 {
     xdr::opaque_array<32> key = {};
     {
@@ -27,17 +27,17 @@ stellar::NodeID load_jnid(json jnid)
 
 // Convert a JSON {theshold:number, validators:[string],
 // innerQuorumSets:[qset]} object to an XDR SCPQuorumSet.
-stellar::SCPQuorumSet load_jqset(json jqset)
+stellar::SCPQuorumSet conv_jqset(json jqset)
 {
     stellar::SCPQuorumSet qset;
     qset.threshold = jqset["threshold"]; // XXX coercion to uint32
     for (json const& jvalidator: jqset["validators"])
     {
-        qset.validators.push_back(load_jnid(jvalidator));
+        qset.validators.push_back(conv_jnid(jvalidator));
     }
     for (json const& inner_jqset: jqset["innerQuorumSets"])
     {
-        qset.innerSets.push_back(load_jqset(inner_jqset));
+        qset.innerSets.push_back(conv_jqset(inner_jqset));
     }
     return qset;
 }

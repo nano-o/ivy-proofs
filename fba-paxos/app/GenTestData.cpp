@@ -12,7 +12,7 @@ int main (int argc, char ** argv)
     {
         std::cout << "Input: " << element << std::endl;
         std::string pk = element["publicKey"];
-        auto qset = load_jqset(element["quorumSet"]);
+        auto qset = conv_jqset(element["quorumSet"]);
         std::cout << "Output: " << xdr::xdr_to_string(qset, pk.c_str());
 
         std::string path = "data/" + pk + ".xdr";
