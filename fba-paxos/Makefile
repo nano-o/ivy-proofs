@@ -20,7 +20,7 @@ clean:
 	rm -vf data/*.xdr
 
 test: all
-	./GenTestData.out < data/conflicted.
+	./GenTestData.out < data/conflicted.json
 	./TestCompilation.out
 
 # build executables in ./app/ by giving their names suffixed by .out
