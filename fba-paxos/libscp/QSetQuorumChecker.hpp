@@ -16,8 +16,23 @@ class QSetQuorumChecker : public QuorumChecker< stellar::NodeID, stellar::SCPQuo
         // last-known quorum slices), otherwise return the empty set.
         virtual X findQuorum(std::map<NID, XS, decltype(nodeid_cmp)*> const& m)
         {
-            X x;
-            return x;
+            X candidate;
+            for (auto const& kv: m) { candidate.insert(kv.first); }
+            // remove nodes that do not recognize the quorum candidate
+            int size_before_filtering;
+            do
+            {
+                size_before_filtering = candidate.size();
+                for (auto const& node : candidate) // std::erase_if in c++20
+                {
+                    if (!isQuorumSlice(candidate, m.find(node)->second))
+                    {
+                        candidate.erase(node); // XXX possible iterator invalidation
+                    }
+                }
+            }
+            while(size_before_filtering != candidate.size());
+            return candidate;
         }
 
         virtual bool isQuorumSlice(X const& candidate, XS const& qset)
