@@ -16,7 +16,7 @@ class QSetQuorumChecker : public QuorumChecker< stellar::NodeID, stellar::SCPQuo
         // last-known quorum slices), otherwise return the empty set.
         virtual X findQuorum(std::map<NID, XS, decltype(nodeid_cmp)*> const& m)
         {
-            X candidate;
+            X candidate(nodeid_cmp);
             for (auto const& kv: m) { candidate.insert(kv.first); }
             // remove nodes that do not recognize the quorum candidate
             int size_before_filtering;
@@ -42,9 +42,9 @@ class QSetQuorumChecker : public QuorumChecker< stellar::NodeID, stellar::SCPQuo
             // but hopefully still has some value for its simplicity.
 
             X validators(qset.validators.begin(), qset.validators.end(),
-                         nodeid_cmp); // XXX nodeid_cmp doesn't seem to be required here, but it ought to be
+                         nodeid_cmp);
 
-            X cs_and_vs;
+            X cs_and_vs(nodeid_cmp);
             std::set_intersection(validators.begin(), validators.end(),
                                   candidate.begin(), candidate.end(),
                                   std::inserter(cs_and_vs, cs_and_vs.begin()),
