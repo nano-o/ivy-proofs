@@ -14,9 +14,10 @@ all: $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out)
 
 clean:
 	rm -vf $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out) $(SRC_HPP_FILES:libscp/%.hpp=%.o)
+	rm -vfr $(SRC_EXE:app/%.cpp=%.out.dSYM/)
 
 %.out: app/%.cpp $(SRC_X_FILES:.x=.h) $(SRC_HPP_FILES)
-	$(CXX) $(CXXFLAGS) -o $@ $(filter-out %.h %.hpp,$^) $(LIBS)
+	$(CXX) $(CXXFLAGS) -g -o $@ $(filter-out %.h %.hpp,$^) $(LIBS)
 
 %.o: libscp/%.hpp $(SRC_X_FILES:.x=.h)
 	$(CXX) $(CXXFLAGS) -o $@ -c $(filter-out %.h,$^) $(LIBS)
