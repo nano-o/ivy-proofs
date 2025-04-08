@@ -10,19 +10,24 @@
 
 using json = nlohmann::json;
 
-// Convert a JSON string-value to an XDR NodeID.
-stellar::NodeID conv_jnid(json jnid)
+// Convert a std::string to an XDR NodeID.
+stellar::NodeID conv_nid(std::string const& s_)
 {
     xdr::opaque_array<32> key = {};
-    {
-        std::string s = jnid;
-        // FIXME: ensure that no more than 32 are copied
-        std::copy(s.begin(), s.end(), key.data());
-    }
+    std::string s = s_.substr(0, 32);
+    std::copy(s.begin(), s.end(), key.data());
+
     stellar::NodeID nid(stellar::PUBLIC_KEY_TYPE_ED25519);
     nid.type(stellar::PUBLIC_KEY_TYPE_ED25519);
     nid.ed25519() = key;
+
     return nid;
+}
+
+// Convert a JSON string-value to an XDR NodeID.
+stellar::NodeID conv_jnid(json jnid)
+{
+    return conv_nid(jnid);
 }
 
 // Convert a JSON {theshold:number, validators:[string],
