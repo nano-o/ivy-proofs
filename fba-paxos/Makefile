@@ -15,6 +15,7 @@ all: $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out)
 clean:
 	rm -vf $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out) $(SRC_HPP_FILES:libscp/%.hpp=%.o)
 	rm -vfr $(SRC_EXE:app/%.cpp=%.out.dSYM/)
+	rm -vf data/*.xdr
 
 %.out: app/%.cpp $(SRC_X_FILES:.x=.h) $(SRC_HPP_FILES)
 	$(CXX) $(CXXFLAGS) -g -o $@ $(filter-out %.h %.hpp,$^) $(LIBS)
