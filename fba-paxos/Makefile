@@ -18,6 +18,7 @@ clean:
 	rm -vf $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out) $(SRC_HPP_FILES:libscp/%.hpp=%.o)
 	rm -vfr $(SRC_EXE:app/%.cpp=%.out.dSYM/)
 	rm -vf data/*.xdr
+	rm -vf paxos.{dsc,h} app/paxos.cpp
 
 test: all
 	./GenTestData.out < data/conflicted.json
@@ -30,6 +31,12 @@ test: all
 # build objects in ./libscp/ by giving their names suffixed by .o
 %.o: libscp/%.hpp $(SRC_X_FILES:.x=.h)
 	$(CXX) $(CXXFLAGS) -o $@ -c $(filter-out %.h,$^) $(LIBS)
+
+# paxos repl app
+app/paxos.cpp: paxos.ivy
+	ivy_to_cpp target=repl isolate=imp_extract $< # instead use target=impl if we want to include paxos.cpp as a library?
+	mv $(<:.ivy=.cpp) $@
+
 
 # watch any target by prefixing its name with "watch-"
 watch-%:
