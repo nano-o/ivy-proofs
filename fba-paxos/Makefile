@@ -7,6 +7,7 @@ XDRC = xdrc
 
 SRC_X_FILES = $(wildcard xdr/*.x)
 SRC_HPP_FILES = $(wildcard libscp/*.hpp vendor/*.hpp)
+SRC_IVY_FILES = $(wildcard *.ivy)
 SRC_EXE = $(wildcard app/*.cpp)
 
 %.h: %.x
@@ -29,9 +30,11 @@ test: all
 	$(CXX) $(CXXFLAGS) -g -o $@ $(filter-out %.h %.hpp,$^) $(LIBS)
 
 # paxos repl app
-app/paxos.cpp: paxos.ivy
-	ivy_to_cpp target=repl isolate=imp_extract $< # instead use target=impl if we want to include paxos.cpp as a library?
-	mv $(<:.ivy=.cpp) $@
+app/paxos.cpp: $(SRC_IVY_FILES)
+	ivy_to_cpp target=repl isolate=imp_extract paxos.ivy # instead use target=impl if we want to include paxos.cpp as a library?
+	echo '#include <libscp/PaxosAdapter.hpp>' > $@
+	cat paxos.cpp >> $@
+	rm -f paxos.cpp
 
 
 # watch any target by prefixing its name with "watch-"
