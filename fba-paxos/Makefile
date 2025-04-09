@@ -28,10 +28,6 @@ test: all
 %.out: app/%.cpp $(SRC_X_FILES:.x=.h) $(SRC_HPP_FILES)
 	$(CXX) $(CXXFLAGS) -g -o $@ $(filter-out %.h %.hpp,$^) $(LIBS)
 
-# build objects in ./libscp/ by giving their names suffixed by .o
-%.o: libscp/%.hpp $(SRC_X_FILES:.x=.h)
-	$(CXX) $(CXXFLAGS) -o $@ -c $(filter-out %.h,$^) $(LIBS)
-
 # paxos repl app
 app/paxos.cpp: paxos.ivy
 	ivy_to_cpp target=repl isolate=imp_extract $< # instead use target=impl if we want to include paxos.cpp as a library?
