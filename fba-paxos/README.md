@@ -1,22 +1,15 @@
-# XDR definitions
+# An implementation of single-shot Paxos
 
-XDR definitions are in `fba-paxos/xdr/`, which is a git submodule.
-After cloning this repository, setup the submodule with `git submodule init && git submodule update`.
+Check the proof with `ivy_check complete=fo paxos.ivy`.
+`complete=fo` tells Ivy not to check that the verification conditions are decidable, and indeed there are some problematic quantifier alternations. Removing them is left as an exercise. Because of this `ivy_check` may get stuck. If so, restart it to try your luck again; it should use a different random seed I think, but if not do `ivy_check seed=$RANDOM complete=fo paxos.ivy`.
 
-To compile the XDR definitions and use them, the Makefile uses the `xdrpp` package, which must be known to `pkg-config`, and the `xdrc` command.
+Note that we cheat a bit: the majority check is implemented in C++ and assumed correct (see `array_set.ivy`).
 
-Here's a way to set up all that on Ubuntu:
-* Clone https://github.com/xdrpp/xdrpp
-* In the `xdrpp` directory, `./autogen.sh && ./configure --prefix=$HOME/.local/`
-* `make && make install`
-* Then, make sure that `$HOME/.local/lib/pkgconfig` is in `PKG_CONFIG_PATH` and that `$HOME/.local/bin` is in your `PATH`.
-* Finally, `make clean && make` should work.
+Compile it to an executable using `ivyc paxos.ivy`.
+For example, you can start 3 nodes 0, 1, and 2 by running `./paxos 2 0`, `./paxos 2 1`, `./paxos 2 2` in 3 different terminals (first arguments is max node ID and second argument is current node ID).
+You will get 3 REPLs. Call e.g. `interface.propose(42)` in one of them, and watch them all decide 42.
+You can also e.g. kill node 1 before calling propose and see if it still works (it should because there is still a quorum left).
 
-On macOS Sequoia, the following notes apply:
-* In the `xdrpp` directory:
-  * Before running `./autogen.sh` you will need to do `brew install autoconf automake`.
-  * Before running `make` you will need to do `brew install pandoc`.
+# Installing Ivy
 
-# TODO: Quorum test
-
-Have a look at `isQuorum` in `LocalNode.ccp` in `stellar-core`.
+Follow the instructions on the [Ivy website](https://kenmcmil.github.io/ivy/install.html) (but I would use a python virtual environment and not run stuff as root)

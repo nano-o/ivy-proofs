@@ -1,0 +1,496 @@
+#lang ivy1.8
+
+# Implementation of single-shot Paxos with proof of safety.
+# We use 2 refinements: level_1 -> level_2 -> impl
+
+include order
+include udp
+include array_set
+include timeout
+
+instance node : iterable
+instance node_set : array_set_with_majority(node)
+type value
+instance round : unbounded_sequence
+
+# first, a very absract specification:
+isolate level_1 = {
+    relation left_rnd(N:node, R:round) # true for rounds we left, and false for the current round, but otherwise unconstrained
+    relation proposal(R:round, V:value) # a leader (implicit) proposes a value for the round
+    relation vote(N:node, R:round, V:value) # a node votes on a value for the round
+    relation decision(N:node, R:round, V:value)
+
+    after init {
+        left_rnd(N,R) := false;
+        proposal(R,V) := false;
+        vote(N,R,V) := false;
+        decision(N,R,V) := false;
+    }
+
+    action start_round(n:node, r:round) = {
+        require ~left_rnd(n,r);
+        left_rnd(n,R) := left_rnd(n,R) | R < r
+    }
+
+    action propose(r:round, q:node_set, maxr:round, v:value) = {
+        require node_set.majority(q);
+        require ~proposal(r,V); # no proposal has been made in round r
+        require forall N, R . node_set.member(N, q) & R < r -> left_rnd(N,R); # node_set.members of q have left all rounds smaller than r
+
+        require ((forall N,R,V. ~(node_set.member(N, q) & R < r & vote(N,R,V))) | ( # no node_set.member of q has voted before r, or
+           (exists N. node_set.member(N, q) & maxr < r & vote(N,maxr,v)) & # a node_set.member of q has voted for v in round maxr < r, and
+           (forall N,R,V. (node_set.member(N, q) & R  < r & vote(N,R,V)) -> R <= maxr)) # all votes by node_set.members of q cast before round r were cast no later than round maxr
+        );
+        proposal(r, v) := true
+    }
+
+    action cast_vote(n:node, r:round, v:value) = {
+        require ~left_rnd(n,r);
+        require proposal(r, v);
+        vote(n, r, v) := true
+    }
+
+    action decide(n:node, r:round, v:value, q:node_set) = {
+        require node_set.majority(q);
+        require forall N . node_set.member(N, q) -> vote(N, r, v);
+        decision(n, r, v) := true
+    }
+
+    specification {
+        # safety property:
+        invariant (
+            decision(N1,R1,V1) &
+            decision(N2,R2,V2)
+        ) -> V1 = V2
+        proof {
+            assume node_set.majority_iso.majorities_intersect
+        }
+    }
+
+    # proposals are unique per round
+    invariant proposal(R,V1) & proposal(R,V2) -> V1 = V2
+
+    # only vote for proposed values
+    invariant vote(N,R,V) -> proposal(R,V)
+
+    private { # private because of quantifier alternation
+
+        # decisions come from quorums of votes:
+        invariant forall R, V. (exists N. decision(N,R,V)) -> exists Q. node_set.majority(Q) & forall N. node_set.member(N, Q) -> vote(N,R,V)
+
+        # Properties of choosable and proposal
+        invariant forall R1, R2, V1, V2, Q. node_set.majority(Q) & R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
+            exists N . node_set.member(N,Q) & left_rnd(N,R1) & ~vote(N,R1,V1)
+        proof {
+            assume node_set.majority_iso.majorities_intersect
+        }
+
+    }
+
+} with round, node_set.majority_iso.majorities_intersect
+
+# now the more concrete, but still abstract, specification:
+isolate level_2 = {
+
+    # We now introduce explicit one_b messages that contain the maximum round at which the sender voted and the corresponding value.
+    # We can also track the current round of each node explicitely without introducing a quantifier alternation cycle.
+
+    relation one_b(N:node, R:round, VOTED:bool, MAXR:round, MAXV:value)
+    individual current_round(N:node) : round
+    relation proposal(R:round, V:value) # 2a
+    relation vote(N:node, R:round, V:value) # 2b
+    relation decision(N:node, R:round, V:value)
+
+    after init {
+        one_b(N,R,VOTED,MAXR,V) := false;
+        current_round(N) := 0;
+        proposal(R,V) := false;
+        vote(N,R,V) := false;
+        decision(N,R,V) := false;
+    }
+
+    action start_round(n:node, r:round) = {
+        require current_round(n) < r;
+        current_round(n) := r;
+        call level_1.start_round(n,current_round(n))
+    }
+
+    action send_1a(r:round) = {
+    }
+
+    # send 1b for current round
+    action send_1b(n:node, voted:bool, maxr:round, maxv:value) = {
+        require (~voted & forall R,V. ~vote(n,R,V)) |
+            (voted & maxr < current_round(n) & vote(n,maxr,maxv) & forall R,V. vote(n,R,V) -> R <= maxr);
+        one_b(n,current_round(n),voted,maxr,maxv) := true;
+    }
+
+    action propose(r:round, q:node_set, maxr:round, v:value) = {
+        require ~proposal(r,V);
+        require node_set.majority(q);
+        require forall N. node_set.member(N, q) -> exists VOTED,MAXR,V. one_b(N,r,VOTED,MAXR,V);
+
+        # find the maximal vote in the quorum
+        # here, compared to the protocol isolate, the leader uses the contents of the one_b messages instead of the vote relation
+        require (forall N. node_set.member(N, q) -> exists MAXR,V . one_b(N,r,false,MAXR,V)) | (
+            (exists N. node_set.member(N, q) & one_b(N,r,true,maxr,v)) &
+            (forall N. node_set.member(N, q) -> exists R,V. one_b(N,r,false,R,V) | (one_b(N,r,true,R,V) & R <= maxr))
+        );
+        proposal(r, v) := true;
+        call level_1.propose(r, q, maxr, v)
+    }
+
+    action cast_vote(n:node, r:round, v:value) = {
+        require current_round(n) = r;
+        require proposal(r, v);
+        vote(n, r, v) := true;
+        call level_1.cast_vote(n, r, v)
+    }
+
+    action decide(n:node, r:round, v:value, q:node_set) = {
+        require node_set.majority(q);
+        require forall N . node_set.member(N, q) -> vote(N, r, v);
+        decision(n, r, v) := true;
+        call level_1.decide(n, r, v, q)
+    }
+
+    specification {
+        # safety property:
+        invariant [safety] (
+          decision(N1,R1,V1) &
+          decision(N2,R2,V2)
+        ) -> V1 = V2
+    }
+
+    private {
+        # invariants that encode the refinement mapping:
+        invariant current_round(N) = R & R <= R2 -> ~level_1.left_rnd(N,R2)
+        invariant current_round(N) = R & R2 < R -> level_1.left_rnd(N,R2)
+        invariant vote(N,R,V) <-> level_1.vote(N,R,V)
+        invariant decision(N,R,V) <-> level_1.decision(N,R,V)
+        invariant proposal(R,V) <-> level_1.proposal(R,V)
+        invariant one_b(N,R,true,MAXR,V) -> level_1.vote(N,MAXR,V) & (forall R2,V.  (MAXR < R2 & R2 < R -> ~level_1.vote(N,R2,V)))
+        invariant one_b(N,R,false,MAXR,V) & R2 < R -> ~level_1.vote(N,R2,V2)
+
+    }
+
+    # additional invariants that are useful to expose to the impl isolate:
+    invariant one_b(N,R,VOTED,MAXR,V) -> current_round(N) >= R
+    invariant one_b(N,R,true,MAXR,V) -> MAXR < R
+    invariant one_b(N1,R1,true,MAXR,V1) & one_b(N2,R2,true,MAXR,V2) -> V1 = V2
+    invariant vote(N1,R,V1) & vote(N2,R,V2) -> V1 = V2
+    invariant vote(N,R,V) -> R <= current_round(N)
+
+} with level_1, round
+
+# Now the implementation
+
+isolate interface(n:node) = {
+    export action propose(v:value)
+    import action decide(v:value)
+    specification {
+        relation proposed(V:value)
+        relation decided(V:value)
+        after init {
+            proposed(V) := false;
+            decided(V) := false;
+        }
+        after propose {
+            proposed(v) := true;
+        }
+        before decide {
+            require exists N. interface.proposed(N,v);
+            require interface.decided(N,V) -> V = v;
+            decided(v) := true;
+        }
+        invariant interface.decided(N1,V1) & interface.decided(N2,V2) -> V1 = V2
+    }
+}
+
+object msg_kind = {
+    type this = {
+        1a, # broadcast proposer→acceptors "prepare"
+        1b, # unicast acceptor→proposer (reply) "promise"
+        2a, # broadcast proposer→acceptors "propose"/"accept"
+        2b  # broadcast acceptor→learners "decide"/"vote"
+    }
+}
+type msg = struct {
+    m_sender : node,      # used by all messages
+    m_kind : msg_kind,    # used by all messages
+    m_currnd : round,     # current round of the sender; used by all messages
+    # proposal
+    # in 1_b message, indicates the highest proposal voted for
+    # in 2_a message, indicates the leader's proposal
+    # in 2_b message, indicates what the node is voting for
+    m_prop_isset : bool,
+    m_prop_round : round,
+    m_prop_value : value
+}
+
+instance net : udp_simple(node, msg)
+
+isolate impl = {
+
+    function leader_of(R:round):node # fixed function assigning a unique leader to each round
+
+    object server(self:node) = {
+
+        instance timer : timeout_sec # calls timeout every second
+
+        ### state variables
+
+        # round state, reinitialized every new round
+        function sent_2a: bool
+        function received_1b_from: node_set # nodes from which we got a 1b message
+        function received_2b_from: node_set # nodes from which we got a 2b message
+        function max1b_isset: bool
+        function max1b_round: round
+        function max1b_value: value
+
+        function learned: bool # initialized once by init and flipped true in handle_2b
+        function currnd: round # reinitialized every start_round
+
+        function maxvote_isset: bool
+        function maxvote_round: round
+        function maxvote_value: value
+
+        # optional: client proposal
+        function clientprop_isset: bool  # initialized once by init and flipped true in interface.propose
+        function clientprop_value: value # initialized once by interface.propose
+
+        ### transition actions
+
+        after init {
+            maxvote_isset := false;
+            clientprop_isset := false;
+            learned := false;
+            # NOTE we cannot call start_round (ivy bug?), so nothing will happen before someone times out of round 0
+            currnd := 0;
+            sent_2a := false;
+            received_1b_from := node_set.emptyset();
+            max1b_isset := false;
+            received_2b_from := node_set.emptyset();
+        }
+
+        # timer interface
+        implement timer.timeout { # start next round we're leader of
+            var to := currnd.next();
+            while (leader_of(to) ~= self)
+            invariant to > currnd
+            {
+                to := to.next()
+            };
+            call start_round(to);
+        }
+
+        # internal (called by init, timeout, or net.recv)
+        action start_round(r:round) = {
+            # call debug_prints.start_round(self,r);
+            currnd := r;
+            call level_2.start_round(self, r);
+            received_1b_from := node_set.emptyset();
+            max1b_isset := false;
+            received_2b_from := node_set.emptyset();
+            sent_2a := false;
+            if self = leader_of(r) {
+                call send_1a();
+            }
+        }
+
+        # client interface
+        implement interface.propose(v:value) {
+            if ~clientprop_isset {
+                clientprop_isset := true;
+                clientprop_value := v;
+            }
+        }
+
+        # environment interface
+        implement net.recv(m:msg) {
+            # if we are behind, fast forward our round
+            if currnd < m.m_currnd { start_round(m.m_currnd); }
+
+            # if the message is behind ignore it, else dispatch it
+            if m.m_currnd < currnd { }
+            else if m.m_kind = msg_kind.1a { call handle_1a(m); }
+            else if m.m_kind = msg_kind.1b { call handle_1b(m); }
+            else if m.m_kind = msg_kind.2a { call handle_2a(m); }
+            else if m.m_kind = msg_kind.2b { call handle_2b(m); }
+        }
+
+        # internal/helper
+        action new_msg(k:msg_kind) returns (m:msg) = {
+            m.m_sender := self;
+            m.m_kind := k;
+            m.m_currnd := currnd;
+        }
+
+        # internal/helper
+        action broadcast(m:msg) = {
+            var it := node.iter.begin();
+            while ~it.is_end
+            invariant node.iter.done(N, it) -> net.spec.sent(m, N)
+            invariant net.spec.sent(M,N) & ~(old net.spec.sent(M,N)) -> M = m
+            {
+                call net.send(self, it.val, m);
+                it := it.next();
+            }
+        }
+
+        ### PREPARE
+
+        # internal (called by start_round)
+        action send_1a = {
+            var prep := new_msg(msg_kind.1a);
+            call broadcast(prep);
+        }
+        # internal (called in response to network)
+        action handle_1a(prep:msg) = {
+            assert prep.m_kind = msg_kind.1a;
+            assert prep.m_currnd = currnd;
+            assert prep.m_sender = self | self ~= leader_of(prep.m_currnd);
+            if ~(maxvote_isset & maxvote_round = currnd) {
+                call send_1b(prep.m_sender);
+            }
+        }
+
+        ### PROMISE
+
+        # internal (called by handle_1a)
+        action send_1b(dst:node) = {
+            var prom := new_msg(msg_kind.1b);
+            prom.m_prop_isset := maxvote_isset; # XXX might be false; that's ok
+            prom.m_prop_round := maxvote_round; # XXX might be uninitialized; that's ok
+            prom.m_prop_value := maxvote_value; # XXX might be uninitialized; that's ok
+            call net.send(self, dst, prom);
+            call level_2.send_1b(
+                self,
+                maxvote_isset,
+                maxvote_round,
+                maxvote_value);
+        }
+
+        # internal (called in response to network)
+        action handle_1b(prom:msg) = {
+            assert prom.m_kind = msg_kind.1b;
+            assert prom.m_currnd = currnd;
+            assert self = leader_of(currnd);
+            received_1b_from := node_set.add(received_1b_from, prom.m_sender);
+            if prom.m_prop_isset & (~max1b_isset | max1b_round < prom.m_prop_round) {
+                max1b_isset := true;
+                max1b_round := prom.m_prop_round;
+                max1b_value := prom.m_prop_value;
+            };
+            if ~sent_2a & node_set.majority(received_1b_from) {
+                call send_2a();
+            }
+        }
+
+        ### PROPOSE
+
+        # internal (called by handle_1b)
+        action send_2a = {
+            if max1b_isset | clientprop_isset {
+                var prop := new_msg(msg_kind.2a);
+                prop.m_prop_isset := true;
+                prop.m_prop_round := currnd;
+                prop.m_prop_value := max1b_value if max1b_isset else clientprop_value;
+                call broadcast(prop);
+                sent_2a := true;
+                call level_2.propose(currnd, received_1b_from, max1b_round, max1b_value if max1b_isset else clientprop_value);
+            }
+        }
+
+        # internal (called in response to network)
+        action handle_2a(prop:msg) = {
+            assert prop.m_kind = msg_kind.2a;
+            assert prop.m_currnd = currnd;
+            # since there is only one leader per round, and the leader can
+            # broadcast only one 2a message, we will only handle one 2a
+            # message, therefore we accept that proposal
+            maxvote_isset := true;
+            maxvote_round := currnd;
+            maxvote_value := prop.m_prop_value;
+            send_2b(prop.m_prop_value);
+            call level_2.cast_vote(self, currnd, prop.m_prop_value)
+        }
+
+        ### VOTE
+
+        # internal (called by handle_2a)
+        action send_2b(v:value) = {
+            var vote := new_msg(msg_kind.2b);
+            vote.m_prop_isset := true;
+            vote.m_prop_round := currnd;
+            vote.m_prop_value := v;
+            broadcast(vote);
+        }
+
+        # internal (called in response to network)
+        action handle_2b(vote:msg) = {
+            assert vote.m_kind = msg_kind.2b;
+            assert vote.m_currnd = currnd;
+            received_2b_from := node_set.add(received_2b_from, vote.m_sender);
+            if ~learned & node_set.majority(received_2b_from) {
+                learned := true;
+                call level_2.decide(self, currnd, vote.m_prop_value, received_2b_from);
+                call interface.decide(self, vote.m_prop_value);
+            }
+        }
+    }
+
+    # Invariants
+
+    # some well-formedness propeties of messages:
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1a -> m_sender(M) = leader_of(m_currnd(M))
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1b -> DST = leader_of(m_currnd(M))
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2a -> m_sender(M) = leader_of(m_currnd(M)) & m_currnd(M) = m_prop_round(M) & m_prop_isset(M)
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2b -> m_currnd(M) = m_prop_round(M) & m_prop_isset(M)
+
+    # messages and level_2 state:
+    invariant server.currnd(N) = level_2.current_round(N)
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2a ->  level_2.proposal(m_prop_round(M), m_prop_value(M))
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.2b -> level_2.vote(m_sender(M), m_prop_round(M), m_prop_value(M))
+    invariant net.spec.sent(M, DST) & m_kind(M) = msg_kind.1b -> level_2.one_b(m_sender(M), m_currnd(M), m_prop_isset(M), m_prop_round(M), m_prop_value(M))
+
+    # maxvote stuff:
+    invariant ~server(N).maxvote_isset -> ~level_2.vote(N,R,V)
+    invariant server(N).maxvote_isset -> level_2.vote(N,server(N).maxvote_round,server(N).maxvote_value)
+    invariant server(N).maxvote_isset & R > server(N).maxvote_round -> ~level_2.vote(N,R,V)
+
+    # sent_2a stuff:
+    invariant (server(leader_of(R)).currnd < R | (server(leader_of(R)).currnd = R & ~server(leader_of(R)).sent_2a)) -> ~level_2.proposal(R, V)
+
+    # 1b stuff:
+    invariant node_set.member(N2, server(N1).received_1b_from) -> level_2.current_round(N2) >= level_2.current_round(N1)
+    invariant node_set.member(N2, server(N1).received_1b_from) -> exists MAXR, V, B . level_2.one_b(N2, server(N1).currnd, B, MAXR, V)
+    invariant node_set.member(N2, server(N1).received_1b_from) & ~server(N1).max1b_isset -> exists MAXR, V . level_2.one_b(N2, server(N1).currnd, false, MAXR, V)
+    invariant node_set.member(N2, server(N1).received_1b_from) & server(N1).max1b_isset -> exists MAXR, V . level_2.one_b(N2, server(N1).currnd, false, MAXR, V) | (level_2.one_b(N2, server(N1).currnd, true, MAXR, V) & MAXR <= server(N1).max1b_round)
+    invariant server(N1).max1b_isset -> exists N2 . node_set.member(N2, server(N1).received_1b_from) & level_2.one_b(N2, server(N1).currnd, true, server(N1).max1b_round, server(N1).max1b_value) # TODO track witness to eliminate quantifier alternation
+
+    # 2b stuff:
+    invariant node_set.member(N2, server(N1).received_2b_from) -> exists V . level_2.vote(N2, server(N1).currnd, V)
+
+    # decisions
+    invariant (exists R . level_2.decision(N,R,V)) = interface.decided(N,V)
+
+    # proposals
+    invariant server(N).clientprop_isset -> interface.proposed(N,server(N).clientprop_value)
+    invariant level_2.proposal(R,V) -> exists N . interface.proposed(N, V)
+    invariant level_2.vote(N1,R,V) -> exists N2 . interface.proposed(N2, V) # TODO quantifier alternation
+    invariant level_2.one_b(N1,R,true,MAXR,V) -> exists N2 . interface.proposed(N2,V) # TODO quantifier alternation
+
+} with round, node_set, node, node.iter, net, interface, level_2
+
+object interpretations = {
+    definition impl.leader_of(r:round) = <<< r % (`node.max` + 1) >>> # this is inline C++
+    interpret value -> bv[8]
+}
+
+object debug_prints = {
+    # messages can be printed in the REPL by calling those actions:
+    import action start_round(n:node, r:round)
+}
+
+extract imp(n:node) = impl.server(n), round, node_set, node, interpretations, net(n)
