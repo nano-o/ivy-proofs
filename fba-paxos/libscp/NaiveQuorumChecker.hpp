@@ -36,11 +36,11 @@ class NaiveQuorumChecker : public QuorumChecker< NID, NaiveQuorumSlices<NID> >
             do
             {
                 size_before_filtering = candidate.size();
-                for (auto const& node : candidate) // std::erase_if in c++20
+                for (auto const& node : X(candidate))
                 {
                     if (!containsQuorumSlice(candidate, m.find(node)->second))
                     {
-                        candidate.erase(node); // XXX possible iterator invalidation
+                        candidate.erase(node);
                     }
                 }
             }
