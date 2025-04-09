@@ -493,4 +493,4 @@ object debug_prints = {
     import action start_round(n:node, r:round)
 }
 
-extract imp(n:node) = impl.server(n), round, node_set, node, interpretations, net(n)
+extract imp_extract(n:node) = impl.server(n), round, node_set, node, interpretations, net(n)
