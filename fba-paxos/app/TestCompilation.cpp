@@ -47,7 +47,7 @@ void test_QSetQuorumChecker()
     assert(!isQuorum(qsqc, test_restrict(test_data, {"PK11"})));
     assert(!isQuorum(qsqc, test_restrict(test_data, {"PK11", "PK12", "PK13", "PK21"})));
     assert(!isQuorum(qsqc, test_restrict(test_data, {"PK13", "PK21"})));
-    assert(!isQuorum(qsqc, test_restrict(test_data, {"PK11", "PK12", "PK13", "PK21", "PK22", "PK23"})));
+    assert( isQuorum(qsqc, test_restrict(test_data, {"PK11", "PK12", "PK13", "PK21", "PK22", "PK23"})));
     //fbas.is_quorum({"PK11", "PK12", "PK13", "NON_EXISTENT"}) // test not ported
     assert(!isQuorum(qsqc, test_restrict(test_data, {"PK11", "PK12", "PK13", "PKX"})));
     assert( isQuorum(qsqc, test_restrict(test_data, {"PK11", "PK12", "PKX", "PK22", "PK23"})));
