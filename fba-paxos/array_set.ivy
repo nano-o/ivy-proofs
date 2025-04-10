@@ -51,6 +51,7 @@ module array_set_with_majority(range) = {
         implementation {
             # inline C++ implementation
             definition majority(s:t) = <<< `s`.repr.size() * 2 > `node.max` + 1 >>>
+            #definition majority(s:t) = <<< `s`.repr.size() * 2 > `node.max` + 1 + paxos_adapter::ENTRY_POINT(s.repr) >>>
         }
     }
 
