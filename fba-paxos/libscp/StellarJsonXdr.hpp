@@ -11,7 +11,7 @@
 using json = nlohmann::json;
 
 // Convert a std::string to an XDR NodeID.
-stellar::NodeID conv_nid(std::string const& s_)
+stellar::NodeID str_to_nid(std::string const& s_)
 {
     xdr::opaque_array<32> key = {};
     std::string s = s_.substr(0, 32);
@@ -25,24 +25,24 @@ stellar::NodeID conv_nid(std::string const& s_)
 }
 
 // Convert a JSON string-value to an XDR NodeID.
-stellar::NodeID conv_jnid(json jnid)
+stellar::NodeID jstr_to_nid(json jnid)
 {
-    return conv_nid(jnid);
+    return str_to_nid(jnid);
 }
 
 // Convert a JSON {theshold:number, validators:[string],
 // innerQuorumSets:[qset]} object to an XDR SCPQuorumSet.
-stellar::SCPQuorumSet conv_jqset(json jqset)
+stellar::SCPQuorumSet jqset_to_qset(json jqset)
 {
     stellar::SCPQuorumSet qset;
     qset.threshold = jqset["threshold"]; // XXX coercion to uint32
     for (json const& jvalidator: jqset["validators"])
     {
-        qset.validators.push_back(conv_jnid(jvalidator));
+        qset.validators.push_back(jstr_to_nid(jvalidator));
     }
     for (json const& inner_jqset: jqset["innerQuorumSets"])
     {
-        qset.innerSets.push_back(conv_jqset(inner_jqset));
+        qset.innerSets.push_back(jqset_to_qset(inner_jqset));
     }
     return qset;
 }
