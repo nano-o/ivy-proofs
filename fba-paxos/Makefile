@@ -1,4 +1,4 @@
-.PHONY: all clean test
+.PHONY: all clean test check
 
 CXX = g++
 CXXFLAGS = -std=c++11 `pkg-config --cflags xdrpp` -I.
@@ -24,6 +24,11 @@ clean:
 test: all
 	./GenTestData.out < data/conflicted.json
 	./TestCompilation.out
+
+check:
+	ivy_check isolate=level_1 paxos.ivy
+	ivy_check isolate=level_2 paxos.ivy
+	ivy_check isolate=impl complete=fo paxos.ivy
 
 # build executables in ./app/ by giving their names suffixed by .out
 %.out: app/%.cpp $(SRC_X_FILES:.x=.h) $(SRC_HPP_FILES)
