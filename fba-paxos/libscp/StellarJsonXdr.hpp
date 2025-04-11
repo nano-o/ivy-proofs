@@ -3,10 +3,12 @@
 
 #include <sys/stat.h>
 #include <iostream>
+#include <fstream>
 #include <libscp/vendor/json.hpp>
 #include <xdrpp/marshal.h>
 #include <xdrpp/printer.h>
 #include <xdr/Stellar-SCP.h>
+#include <libscp/QuorumChecker.hpp>
 
 using json = nlohmann::json;
 
@@ -22,6 +24,21 @@ stellar::NodeID str_to_nid(std::string const& s_)
     nid.ed25519() = key;
 
     return nid;
+}
+
+// Convert an XDR NodeID back to a std::string. Probably not useful for real keys.
+//
+// FIXME: Assumes the NodeID is PUBLIC_KEY_TYPE_ED25519
+std::string nid_to_str(stellar::NodeID const& nid)
+{
+        xdr::opaque_array<32> key = nid.ed25519();
+        std::string s;
+        for (auto const& c: key)
+        {
+            if (c == '\0') { break; }
+            s.push_back(c);
+        }
+        return s;
 }
 
 // Convert a JSON string-value to an XDR NodeID.
@@ -128,6 +145,21 @@ size_t load_xdr(std::string path, XDR_TYPE& xdr_value)
     std::copy(buf, buf + r_count, m->raw_data());
     xdr::xdr_from_msg(m, xdr_value);
     return r_count;
+}
+
+// Read a json file containing [{publicKey:JSON,quorumSet:QSET}] to a map.
+std::map<stellar::NodeID, stellar::SCPQuorumSet, decltype(nodeid_cmp)*>
+    load_jnodeslices(std::istream & stream)
+{
+    std::map<stellar::NodeID, stellar::SCPQuorumSet, decltype(nodeid_cmp)*>
+            m(nodeid_cmp);
+    for (json const& element: json::parse(stream))
+    {
+        auto pk = jstr_to_nid(element["publicKey"]);
+        auto qset = jqset_to_qset(element["quorumSet"]);
+        m.insert({pk, qset});
+    }
+    return m;
 }
 
 #endif // INCLUDE_STELLAR_JSON_XDR_HPP_
