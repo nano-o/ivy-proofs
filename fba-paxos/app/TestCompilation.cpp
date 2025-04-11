@@ -21,7 +21,7 @@ NodeQSets test_restrict(NodeQSets const& m1, std::vector<std::string> const& ks)
     auto m2 = node_qsets_empty();
     for (auto const& k: ks)
     {
-        auto it = m1.find(conv_nid(k));
+        auto it = m1.find(str_to_nid(k));
         assert(it != m1.end()); // test_restrict should fail if a name isn't in the test data
         m2.insert(*it);
         std::cout << k << ' ';
@@ -35,7 +35,7 @@ void test_QSetQuorumChecker()
     auto test_data = node_qsets_empty();
     for (std::string const& name : {"PK11", "PK12", "PK13", "PK21", "PK22", "PK23", "PKX"})
     {
-        stellar::NodeID k = conv_nid(name);
+        stellar::NodeID k = str_to_nid(name);
         stellar::SCPQuorumSet v;
         assert(0 < load_xdr("data/" + name + ".xdr", v)); // test should fail if an expected test file isn't found
         test_data.insert({k, v});
