@@ -1,18 +1,20 @@
 #lang ivy1.8
 
-# a set datatype with a majority predicate indicating whether the set consists of a strict majority of its element type (which must be an iterable)
+# a set datatype with an is_quorum predicate indicating whether a quorum exists
+# for the nodes in the set and is agreeable to the specified node (the node
+# type must be an iterable)
 
 include collections
 include order
 
-module array_set_with_majority(range) = {
+module array_set_with_qset_quorum_check(range) = {
     # range must be an instance of iterable
 
     type this
     alias t = this
 
     relation member(E:range, S:t)
-    relation majority(S:t)
+    relation is_quorum(E:range, S:t)
 
     action emptyset returns (s:t)
     action add(s:t, e: range) returns (s:t)
@@ -44,14 +46,33 @@ module array_set_with_majority(range) = {
         }
     }
 
-    trusted isolate majority_iso = {
-        explicit invariant [majorities_intersect]
-            majority(S1) & majority(S2) -> exists N . member(N,S1) & member(N,S2)
+    trusted isolate is_quorum_iso = {
+        explicit invariant [quorums_intersect]
+            (exists E1, E2. is_quorum(E1, S1) & is_quorum(E2, S2)) -> exists N . member(N,S1) & member(N,S2)
+        # Terminology:
+        #   slice : {node}
+        #   quorum : {node}
+        #   quorum-set : {slice}
+        #   nodes-slices, quorum-set-configuration : node → quorum-set
+        #
+        # ∀ {node} n {node} ≠ ∅
+        #
+        # This might not hold for some quorum-set configs. To be sure, we'd
+        # want to check it manually at runtime each time the
+        # quorum-set-configuration changes. Even if you did that, your local
+        # information might be insufficient, and so it might not hold if you
+        # had all distributed information. Therefore we take as an assumption.
+        #
+        # is_quorum(S:quorum, L:node) : bool
+        #
+        # A quorum is only useful to the current node if it's a quorum /and/
+        # the current node recognizes it (if the quorum contains one of this
+        # node's slices).
 
         implementation {
             # inline C++ implementation
-            definition majority(s:t) = <<< `s`.repr.size() * 2 > `node.max` + 1 >>>
-            #definition majority(s:t) = <<< `s`.repr.size() * 2 > `node.max` + 1 + paxos_adapter::ENTRY_POINT(s.repr) >>>
+            definition is_quorum(n:range, s:t) = <<< `s`.repr.size() * 2 > `node.max` + 1 >>> # FIXME: call the cpp quorum checker
+            #definition is_quorum(n:range, s:t) = <<< `s`.repr.size() * 2 > `node.max` + 1 + paxos_adapter::ENTRY_POINT(s.repr) >>>
         }
     }
 
