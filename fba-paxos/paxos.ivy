@@ -9,7 +9,7 @@ include array_set
 include timeout
 
 instance node : iterable
-instance node_set : array_set_with_majority(node)
+instance node_set : array_set_with_qset_quorum_check(node)
 type value
 instance round : unbounded_sequence
 
@@ -33,7 +33,7 @@ isolate level_1 = {
     }
 
     action propose(r:round, q:node_set, maxr:round, v:value) = {
-        require node_set.majority(q);
+        require exists N . node_set.is_quorum(N, q);
         require ~proposal(r,V); # no proposal has been made in round r
         require forall N, R . node_set.member(N, q) & R < r -> left_rnd(N,R); # node_set.members of q have left all rounds smaller than r
 
@@ -51,7 +51,7 @@ isolate level_1 = {
     }
 
     action decide(n:node, r:round, v:value, q:node_set) = {
-        require node_set.majority(q);
+        require node_set.is_quorum(n, q);
         require forall N . node_set.member(N, q) -> vote(N, r, v);
         decision(n, r, v) := true
     }
@@ -63,7 +63,7 @@ isolate level_1 = {
             decision(N2,R2,V2)
         ) -> V1 = V2
         proof {
-            assume node_set.majority_iso.majorities_intersect
+            assume node_set.is_quorum_iso.quorums_intersect
         }
     }
 
@@ -76,18 +76,18 @@ isolate level_1 = {
     private { # private because of quantifier alternation
 
         # decisions come from quorums of votes:
-        invariant forall R, V. (exists N. decision(N,R,V)) -> exists Q. node_set.majority(Q) & forall N. node_set.member(N, Q) -> vote(N,R,V)
+        invariant forall R, V. (exists N. decision(N,R,V)) -> exists Q. (exists N. node_set.is_quorum(N, Q)) & forall N. node_set.member(N, Q) -> vote(N,R,V)
 
         # Properties of choosable and proposal
-        invariant forall R1, R2, V1, V2, Q. node_set.majority(Q) & R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
+        invariant forall R1, R2, V1, V2, Q. (exists N . node_set.is_quorum(N, Q)) & R1 < R2 & proposal(R2,V2) & V1 ~= V2 ->
             exists N . node_set.member(N,Q) & left_rnd(N,R1) & ~vote(N,R1,V1)
         proof {
-            assume node_set.majority_iso.majorities_intersect
+            assume node_set.is_quorum_iso.quorums_intersect
         }
 
     }
 
-} with round, node_set.majority_iso.majorities_intersect
+} with round, node_set.is_quorum_iso.quorums_intersect
 
 # now the more concrete, but still abstract, specification:
 isolate level_2 = {
@@ -127,7 +127,7 @@ isolate level_2 = {
 
     action propose(r:round, q:node_set, maxr:round, v:value) = {
         require ~proposal(r,V);
-        require node_set.majority(q);
+        require exists N. node_set.is_quorum(N, q);
         require forall N. node_set.member(N, q) -> exists VOTED,MAXR,V. one_b(N,r,VOTED,MAXR,V);
 
         # find the maximal vote in the quorum
@@ -148,7 +148,7 @@ isolate level_2 = {
     }
 
     action decide(n:node, r:round, v:value, q:node_set) = {
-        require node_set.majority(q);
+        require node_set.is_quorum(n, q);
         require forall N . node_set.member(N, q) -> vote(N, r, v);
         decision(n, r, v) := true;
         call level_1.decide(n, r, v, q)
@@ -382,7 +382,7 @@ isolate impl = {
                 max1b_round := prom.m_prop_round;
                 max1b_value := prom.m_prop_value;
             };
-            if ~sent_2a & node_set.majority(received_1b_from) {
+            if ~sent_2a & node_set.is_quorum(self, received_1b_from) {
                 call send_2a();
             }
         }
@@ -432,7 +432,7 @@ isolate impl = {
             assert vote.m_kind = msg_kind.2b;
             assert vote.m_currnd = currnd;
             received_2b_from := node_set.add(received_2b_from, vote.m_sender);
-            if ~learned & node_set.majority(received_2b_from) {
+            if ~learned & node_set.is_quorum(self, received_2b_from) {
                 learned := true;
                 call level_2.decide(self, currnd, vote.m_prop_value, received_2b_from);
                 call interface.decide(self, vote.m_prop_value);
