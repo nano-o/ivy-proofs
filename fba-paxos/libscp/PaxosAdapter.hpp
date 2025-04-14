@@ -20,7 +20,7 @@ namespace paxos_adapter
     }
 
     // call from ivy array_set with self.repr
-    int ENTRY_POINT(std::vector<int> const& ns)
+    bool is_quorum(int const& n, std::vector<int> const& ns)
     {
         X candidate = arrayset_to_slice(ns);
         //std::cout << "{";

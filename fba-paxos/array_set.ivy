@@ -70,9 +70,8 @@ module array_set_with_qset_quorum_check(range) = {
         # node's slices).
 
         implementation {
-            # inline C++ implementation
-            definition is_quorum(n:range, s:t) = <<< `s`.repr.size() * 2 > `node.max` + 1 >>> # FIXME: call the cpp quorum checker
-            #definition is_quorum(n:range, s:t) = <<< `s`.repr.size() * 2 > `node.max` + 1 + paxos_adapter::ENTRY_POINT(s.repr) >>>
+            # C++ implementation
+            definition is_quorum(n:range, s:t) = <<< paxos_adapter::is_quorum(`n`, `s`.repr) >>>
         }
     }
 
