@@ -7,18 +7,14 @@
 
 namespace paxos_adapter
 {
-    using NID = stellar::NodeID;
-    using X = Slice<stellar::NodeID>;
-    using XS = stellar::SCPQuorumSet;
-
-    NID int_to_nodeid(int const& n)
+    QSetQuorumChecker::Node int_to_nodeid(int const& n)
     {
-        return conv_nid(std::to_string(n));
+        return str_to_nid(std::to_string(n));
     }
 
-    X arrayset_to_slice(std::vector<int> const& ns)
+    QSetQuorumChecker::X arrayset_to_slice(std::vector<int> const& ns)
     {
-        X x(nodeid_cmp);
+        QSetQuorumChecker::X x(nodeid_cmp);
         for (auto const& n: ns) { x.insert(int_to_nodeid(n)); }
         return x;
     }

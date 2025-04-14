@@ -9,6 +9,7 @@
 #include <xdrpp/printer.h>
 #include <xdr/Stellar-SCP.h>
 #include <libscp/QuorumChecker.hpp>
+#include <libscp/QSetQuorumChecker.hpp>
 
 using json = nlohmann::json;
 
@@ -148,11 +149,9 @@ size_t load_xdr(std::string path, XDR_TYPE& xdr_value)
 }
 
 // Read a json file containing [{publicKey:JSON,quorumSet:QSET}] to a map.
-std::map<stellar::NodeID, stellar::SCPQuorumSet, decltype(nodeid_cmp)*>
-    load_jnodeslices(std::istream & stream)
+QSetQuorumChecker::NodeXS load_jnodeslices(std::istream & stream)
 {
-    std::map<stellar::NodeID, stellar::SCPQuorumSet, decltype(nodeid_cmp)*>
-            m(nodeid_cmp);
+    QSetQuorumChecker::NodeXS m(nodeid_cmp);
     for (json const& element: json::parse(stream))
     {
         auto pk = jstr_to_nid(element["publicKey"]);

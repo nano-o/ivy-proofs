@@ -4,17 +4,18 @@
 #include <algorithm>
 #include <libscp/QuorumChecker.hpp>
 
+
 class QSetQuorumChecker : public QuorumChecker< stellar::NodeID, stellar::SCPQuorumSet >
 {
-    using NID = stellar::NodeID;
-    using X = Slice<stellar::NodeID>;
-    using XS = stellar::SCPQuorumSet;
-
     public:
+        using Node = stellar::NodeID;
+        using X = Slice<stellar::NodeID>;
+        using XS = stellar::SCPQuorumSet;
+        using NodeXS = std::map<Node, XS, decltype(nodeid_cmp)*>;
 
         // Search for a quorum among the given a map (of nodes and their
         // last-known quorum slices), otherwise return the empty set.
-        virtual X findQuorum(std::map<NID, XS, decltype(nodeid_cmp)*> const& m)
+        virtual X findQuorum(NodeXS const& m)
         {
             X candidate(nodeid_cmp);
             for (auto const& kv: m) { candidate.insert(kv.first); }

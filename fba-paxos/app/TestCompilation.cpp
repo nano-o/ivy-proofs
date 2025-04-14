@@ -6,17 +6,15 @@
 #include <libscp/QSetQuorumChecker.hpp>
 #include <libscp/NaiveQuorumChecker.hpp>
 
-using NodeQSets = std::map< stellar::NodeID, stellar::SCPQuorumSet, decltype(nodeid_cmp)* >;
-
 // constructor that ensures we add the nodeid_cmp (else segfaults occur on insert)
-NodeQSets node_qsets_empty()
+QSetQuorumChecker::NodeXS node_qsets_empty()
 {
-    NodeQSets m(nodeid_cmp);
+    QSetQuorumChecker::NodeXS m(nodeid_cmp);
     return m;
 }
 
 // restrict test data to specified keys
-NodeQSets test_restrict(NodeQSets const& m1, std::vector<std::string> const& ks)
+QSetQuorumChecker::NodeXS test_restrict(QSetQuorumChecker::NodeXS const& m1, std::vector<std::string> const& ks)
 {
     auto m2 = node_qsets_empty();
     for (auto const& k: ks)
