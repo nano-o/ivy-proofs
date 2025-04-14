@@ -13,7 +13,7 @@ SRC_EXE = $(wildcard app/*.cpp)
 %.h: %.x
 	$(XDRC) -hh -pedantic -o $@ $<
 
-all: $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out)
+all: $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out) paxos.out
 
 clean:
 	rm -vf $(SRC_X_FILES:.x=.h) $(SRC_EXE:app/%.cpp=%.out) $(SRC_HPP_FILES:libscp/%.hpp=%.o)
