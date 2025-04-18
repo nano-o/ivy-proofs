@@ -148,6 +148,12 @@ size_t load_xdr(std::string path, XDR_TYPE& xdr_value)
     return r_count;
 }
 
+// Read a json file containing a q-set to stellar::SCPQuorumSet.
+stellar::SCPQuorumSet load_jqset(std::istream & stream)
+{
+    return jqset_to_qset(json::parse(stream));
+}
+
 // Read a json file containing [{publicKey:JSON,quorumSet:QSET}] to a map.
 QSetQuorumChecker::NodeXS load_jnodeslices(std::istream & stream)
 {

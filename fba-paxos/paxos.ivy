@@ -7,6 +7,10 @@ include order
 include udp
 include array_set
 include timeout
+include stellar__data
+
+instance key : scp_nodeid
+instance qset : scp_qset
 
 instance node : iterable
 instance node_set : array_set_with_qset_quorum_check(node)
@@ -219,6 +223,7 @@ type msg = struct {
     m_sender : node,      # used by all messages
     m_kind : msg_kind,    # used by all messages
     m_currnd : round,     # current round of the sender; used by all messages
+    m_qset : qset,
     # proposal
     # in 1_b message, indicates the highest proposal voted for
     # in 2_a message, indicates the leader's proposal
@@ -239,6 +244,7 @@ isolate impl = {
         instance timer : timeout_sec # calls timeout every second
 
         ### state variables
+        function self_qset: qset
 
         # round state, reinitialized every new round
         function sent_2a: bool
@@ -262,6 +268,7 @@ isolate impl = {
         ### transition actions
 
         after init {
+            call self_qset.load();
             maxvote_isset := false;
             clientprop_isset := false;
             learned := false;
@@ -324,6 +331,7 @@ isolate impl = {
             m.m_sender := self;
             m.m_kind := k;
             m.m_currnd := currnd;
+            m.m_qset := self_qset;
         }
 
         # internal/helper

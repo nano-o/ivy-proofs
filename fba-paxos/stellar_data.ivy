@@ -1,0 +1,57 @@
+#lang ivy1.8
+
+module scp_nodeid = {
+    type this
+}
+
+module scp_qset = {
+    type this
+    alias t = this
+
+    action load (s:t)
+    
+    specification {
+        #after init {
+        #    <<< impure
+        #    // XXX load the qset
+        #    >>>
+        #}
+    }
+
+    implementation {
+        #interpret t -> <<< stellar::SCPQuorumSet >>>
+
+        # FIXME: as soon as you uncomment this interpret line, compilation
+        # fails because we need operator==, operator<<, and __hash defined
+        # wherever scp_qset is instantiated
+
+        implement load {
+            #<<< impl
+            #std::fstream self_qset_fd("self_qset.json");
+            #`s` = load_jnodeslices(self_qset_fd);
+            #>>>
+        }
+
+        ##implement load {
+        ##}
+        ##    action load = {
+        ##        <<< impure
+        ##        // XXX do we want to take a path instead of hardcoding a configuration file path?
+        ##        >>>
+        ##    }
+
+        #<<< header
+        #bool operator ==(`t` const& other);
+        #>>>
+
+        #<<< impl
+        #bool operator ==(`t` const& other){
+        #    //test
+        #    return qset_eq(this, other);
+        #}
+
+        #>>>
+
+    }
+}
+
