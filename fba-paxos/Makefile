@@ -1,6 +1,6 @@
 .PHONY: all clean test check
 
-CXX = g++
+CXX = g++ -fdiagnostics-color=always
 CXXFLAGS = -std=c++11 `pkg-config --cflags xdrpp` -I.
 LIBS = `pkg-config --libs xdrpp`
 XDRC = xdrc
