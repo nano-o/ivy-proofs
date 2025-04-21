@@ -7,7 +7,7 @@ include order
 include udp
 include array_set
 include timeout
-include stellar__data
+include stellar_data
 
 instance key : scp_nodeid
 instance qset : scp_qset
