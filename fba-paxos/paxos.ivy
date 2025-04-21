@@ -268,7 +268,7 @@ isolate impl = {
         ### transition actions
 
         after init {
-            call self_qset.load();
+            #call self_qset.load();
             maxvote_isset := false;
             clientprop_isset := false;
             learned := false;
@@ -501,4 +501,4 @@ object debug_prints = {
     import action start_round(n:node, r:round)
 }
 
-extract imp_extract(n:node) = impl.server(n), round, node_set, node, interpretations, net(n)
+extract imp_extract(n:node) = impl.server(n), round, node_set, node, interpretations, net(n), key, qset

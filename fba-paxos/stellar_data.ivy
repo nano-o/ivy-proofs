@@ -2,56 +2,42 @@
 
 module scp_nodeid = {
     type this
+    alias t = this
 }
 
 module scp_qset = {
     type this
     alias t = this
 
-    action load (s:t)
-    
     specification {
-        #after init {
-        #    <<< impure
-        #    // XXX load the qset
-        #    >>>
-        #}
     }
 
     implementation {
-        #interpret t -> <<< stellar::SCPQuorumSet >>>
+        interpret t -> <<< stellar::SCPQuorumSet >>>
 
-        # FIXME: as soon as you uncomment this interpret line, compilation
-        # fails because we need operator==, operator<<, and __hash defined
-        # wherever scp_qset is instantiated
+        # header hook adds things to paxos.h before the paxos class
+        <<< header
+        // FIXME HEADER LOC
+        >>>
 
-        implement load {
-            #<<< impl
-            #std::fstream self_qset_fd("self_qset.json");
-            #`s` = load_jnodeslices(self_qset_fd);
-            #>>>
-        }
+        # member hook adds things to paxos.h within the paxos class
+        <<< member
+        // FIXME MEMBER LOC
+        >>>
 
-        ##implement load {
-        ##}
-        ##    action load = {
-        ##        <<< impure
-        ##        // XXX do we want to take a path instead of hardcoding a configuration file path?
-        ##        >>>
-        ##    }
+        # impl hook adds things to paxos.cpp
+        <<< impl
+        // FIXME IMPL LOC
+        >>>
 
-        #<<< header
-        #bool operator ==(`t` const& other);
-        #>>>
+        # encode hook adds things to paxos.cpp right after the impl hook
+        <<< encode `t`
+        // FIXME encode `t` loc
+        >>>
 
-        #<<< impl
-        #bool operator ==(`t` const& other){
-        #    //test
-        #    return qset_eq(this, other);
-        #}
-
-        #>>>
-
+        # init hook adds lines to the `paxos::paxos()` constructor
+        <<< init
+        // FIXME INIT LOC
+        >>>
     }
 }
-
