@@ -15,19 +15,7 @@ module scp_qset = {
     implementation {
         interpret t -> <<< paxos_adapter::AdaptedQSet >>>
 
-        # header hook adds things to paxos.h before the paxos class
-        <<< header
-        // FIXME HEADER LOC
-        >>>
-
-        # member hook adds things to paxos.h within the paxos class
-        <<< member
-        // FIXME MEMBER LOC
-        >>>
-
-        # impl hook adds things to paxos.cpp
         <<< impl
-        // FIXME IMPL LOC
 
         template<>
         void __ser<`t`>(ivy_ser&, `t` const&)
@@ -49,14 +37,5 @@ module scp_qset = {
 
         >>>
 
-        # encode hook adds things to paxos.cpp right after the impl hook
-        <<< encode `t`
-        // FIXME encode `t` loc
-        >>>
-
-        # init hook adds lines to the `paxos::paxos()` constructor
-        <<< init
-        // FIXME INIT LOC
-        >>>
     }
 }
