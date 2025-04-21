@@ -18,21 +18,23 @@ module scp_qset = {
         <<< impl
 
         template<>
-        void __ser<`t`>(ivy_ser&, `t` const&)
+        void __ser<`t`>(ivy_ser& res, `t` const& qs)
         {
-            // TODO
+            res.set(qs.encode());
         }
 
         template<>
-        void __deser<`t`>(ivy_deser&, `t`&)
+        void __deser<`t`>(ivy_deser& imp, `t`& qs)
         {
-            // TODO
+            std::string s;
+            imp.get(s);
+            paxos_adapter::AdaptedQSet::decode(s, qs);
         }
 
         template<>
-        `t` _arg<`t`>(std::__1::vector<ivy_value, std::__1::allocator<ivy_value>>&, unsigned int, long long)
+        `t` _arg<`t`>(std::vector<ivy_value> &args, unsigned idx, long long bound)
         {
-            // TODO
+            throw "Not implemented";
         }
 
         >>>
