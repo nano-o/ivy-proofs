@@ -10,11 +10,26 @@ namespace paxos_adapter
 {
     class AdaptedQSet : public stellar::SCPQuorumSet
     {
+
         public:
+            AdaptedQSet() {}
+            AdaptedQSet(stellar::SCPQuorumSet x) : stellar::SCPQuorumSet{x} {}
+
             size_t __hash() const
             {
                 std::string x = xdr::xdr_to_string<stellar::SCPQuorumSet>(*this);
                 return std::hash<std::string>{}(x);
+            }
+            std::string encode() const
+            {
+                xdr::msg_ptr m = xdr::xdr_to_msg<stellar::SCPQuorumSet>(*this);
+                return std::string(m->raw_data(), m->raw_data() + m->raw_size());
+            }
+            static void decode(std::string s, AdaptedQSet & out)
+            {
+                xdr::msg_ptr m = xdr::message_t::alloc(s.length() - 4);
+                std::copy(s.begin(), s.end(), m->raw_data());
+                xdr::xdr_from_msg<stellar::SCPQuorumSet>(m, out);
             }
     };
 
