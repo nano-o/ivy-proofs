@@ -8,22 +8,25 @@
 
 namespace paxos_adapter
 {
-    class AdaptedQSet : public stellar::SCPQuorumSet {
+    class AdaptedQSet : public stellar::SCPQuorumSet
+    {
         public:
-            inline size_t __hash() const
+            size_t __hash() const
             {
-                // TODO
+                std::string x = xdr::xdr_to_string<stellar::SCPQuorumSet>(*this);
+                return std::hash<std::string>{}(x);
             }
     };
 
-    inline bool operator ==(AdaptedQSet const& self, AdaptedQSet const& other)
+    bool operator==(AdaptedQSet const& self, AdaptedQSet const& other)
     {
         return qset_eq(self, other);
     }
 
-    std::ostream& operator<<(std::ostream& os, AdaptedQSet const& obj)
+    std::ostream& operator<<(std::ostream& os, AdaptedQSet const& self)
     {
-        // TODO
+        os << xdr::xdr_to_string<stellar::SCPQuorumSet>(self);
+        return os;
     }
 
     QSetQuorumChecker::Node int_to_nodeid(int const& n)
