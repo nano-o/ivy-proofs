@@ -28,6 +28,25 @@ module scp_qset = {
         # impl hook adds things to paxos.cpp
         <<< impl
         // FIXME IMPL LOC
+
+        template<>
+        void __ser<`t`>(ivy_ser&, `t` const&)
+        {
+            // TODO
+        }
+
+        template<>
+        void __deser<`t`>(ivy_deser&, `t`&)
+        {
+            // TODO
+        }
+
+        template<>
+        `t` _arg<`t`>(std::__1::vector<ivy_value, std::__1::allocator<ivy_value>>&, unsigned int, long long)
+        {
+            // TODO
+        }
+
         >>>
 
         # encode hook adds things to paxos.cpp right after the impl hook
