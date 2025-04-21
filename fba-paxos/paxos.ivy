@@ -318,6 +318,9 @@ isolate impl = {
             # if we are behind, fast forward our round
             if currnd < m.m_currnd { start_round(m.m_currnd); }
 
+            # update mapping with senders' qset (FIXME: should we ignore if the message is behind?)
+            node_config(m.m_sender) := m.m_qset;
+
             # if the message is behind ignore it, else dispatch it
             if m.m_currnd < currnd { }
             else if m.m_kind = msg_kind.1a { call handle_1a(m); }
