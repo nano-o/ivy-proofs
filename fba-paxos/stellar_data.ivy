@@ -9,11 +9,20 @@ module scp_qset = {
     type this
     alias t = this
 
+    action load returns (s:t)
+
     specification {
     }
 
     implementation {
         interpret t -> <<< paxos_adapter::AdaptedQSet >>>
+
+        implement load {
+            <<<
+            std::fstream str("qset_config.json");
+            `s`.paxos_adapter::AdaptedQSet::operator=(load_jqset(str));
+            >>>
+        }
 
         <<< impl
 
