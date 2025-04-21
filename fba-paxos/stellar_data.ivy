@@ -13,7 +13,7 @@ module scp_qset = {
     }
 
     implementation {
-        interpret t -> <<< stellar::SCPQuorumSet >>>
+        interpret t -> <<< paxos_adapter::AdaptedQSet >>>
 
         # header hook adds things to paxos.h before the paxos class
         <<< header
