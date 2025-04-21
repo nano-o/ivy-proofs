@@ -244,7 +244,7 @@ isolate impl = {
         instance timer : timeout_sec # calls timeout every second
 
         ### state variables
-        function self_qset: qset
+        function config: qset
 
         # round state, reinitialized every new round
         function sent_2a: bool
@@ -268,7 +268,7 @@ isolate impl = {
         ### transition actions
 
         after init {
-            #call self_qset.load();
+            config := qset.load();
             maxvote_isset := false;
             clientprop_isset := false;
             learned := false;
@@ -331,7 +331,7 @@ isolate impl = {
             m.m_sender := self;
             m.m_kind := k;
             m.m_currnd := currnd;
-            m.m_qset := self_qset;
+            m.m_qset := config;
         }
 
         # internal/helper
