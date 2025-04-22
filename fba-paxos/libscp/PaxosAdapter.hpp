@@ -104,12 +104,12 @@ namespace paxos_adapter
             candidate_qsets.insert(*found);
         }
 
-        // find a quorum within the candidate set
         QSetQuorumChecker qsqc;
-        QSetQuorumChecker::X quorum = qsqc.findQuorum(candidate_qsets);
 
-        // check whether the current node recognizes this quorum
-        return qsqc.containsQuorumSlice(quorum, self_qset);
+        // return true if a quorum was found in candidate set and the current
+        // node has a quorum slice in the candidate set
+        return !qsqc.findQuorum(candidate_qsets).empty()
+            && qsqc.containsQuorumSlice(candidate, self_qset);
     }
 }
 
