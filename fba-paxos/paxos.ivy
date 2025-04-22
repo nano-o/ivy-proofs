@@ -278,6 +278,7 @@ isolate impl = {
             received_1b_from := node_set.emptyset();
             max1b_isset := false;
             received_2b_from := node_set.emptyset();
+            # TODO: set self,self_config in both node_set here
         }
 
         # timer interface
@@ -299,6 +300,7 @@ isolate impl = {
             received_1b_from := node_set.emptyset();
             max1b_isset := false;
             received_2b_from := node_set.emptyset();
+            # TODO: set self,self_config in both node_set here
             sent_2a := false;
             if self = leader_of(r) {
                 call send_1a();

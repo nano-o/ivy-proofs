@@ -41,6 +41,7 @@ module array_map_with_qset_quorum_check(domain, range) = {
         }
 
         implement add {
+            # TODO: maintain a mapping domain->range
             if ~member(e, s) {
                 repr(s) := repr(s).append(e)
             }
