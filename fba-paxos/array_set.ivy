@@ -46,6 +46,15 @@ module array_map_with_qset_quorum_check(domain, range) = {
                 repr(s) := repr(s).append(e)
             }
         }
+
+        <<< impl
+        // we must define this conversion here because paxos::qset isn't in scope in libscp/PaxosAdapter.hpp
+        std::vector<stellar::SCPQuorumSet> ivyqsets_to_qsets(std::vector<paxos::qset> const& xs)
+        {
+            std::vector<stellar::SCPQuorumSet> out(xs.begin(), xs.end());
+            return out;
+        }
+        >>>
     }
 
     trusted isolate is_quorum_iso = {
