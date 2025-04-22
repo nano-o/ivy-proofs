@@ -13,7 +13,7 @@ instance key : scp_nodeid
 instance qset : scp_qset
 
 instance node : iterable
-instance node_set : array_map_with_qset_quorum_check(node)
+instance node_set : array_map_with_qset_quorum_check(node, qset)
 type value
 instance round : unbounded_sequence
 
@@ -318,9 +318,6 @@ isolate impl = {
             # if we are behind, fast forward our round
             if currnd < m.m_currnd { start_round(m.m_currnd); }
 
-            # update mapping with senders' qset (FIXME: should we ignore if the message is behind?)
-            node_config(m.m_sender) := m.m_qset;
-
             # if the message is behind ignore it, else dispatch it
             if m.m_currnd < currnd { }
             else if m.m_kind = msg_kind.1a { call handle_1a(m); }
@@ -387,7 +384,7 @@ isolate impl = {
             assert prom.m_kind = msg_kind.1b;
             assert prom.m_currnd = currnd;
             assert self = leader_of(currnd);
-            received_1b_from := node_set.add(received_1b_from, prom.m_sender);
+            received_1b_from := node_set.add(received_1b_from, prom.m_sender, prom.m_qset);
             if prom.m_prop_isset & (~max1b_isset | max1b_round < prom.m_prop_round) {
                 max1b_isset := true;
                 max1b_round := prom.m_prop_round;
@@ -442,7 +439,7 @@ isolate impl = {
         action handle_2b(vote:msg) = {
             assert vote.m_kind = msg_kind.2b;
             assert vote.m_currnd = currnd;
-            received_2b_from := node_set.add(received_2b_from, vote.m_sender);
+            received_2b_from := node_set.add(received_2b_from, vote.m_sender, vote.m_qset);
             if ~learned & node_set.is_quorum(self, received_2b_from) {
                 learned := true;
                 call level_2.decide(self, currnd, vote.m_prop_value, received_2b_from);
