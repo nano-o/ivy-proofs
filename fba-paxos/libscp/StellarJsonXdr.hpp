@@ -127,9 +127,9 @@ size_t load_xdr(std::string path, XDR_TYPE& xdr_value)
         std::cerr << "size of '" << path << "' is too small to be an xdr network message" << std::endl;
         return -1;
     }
-    char buf[st.st_size];
+    std::vector<char> buf(st.st_size);
     auto fd = std::fopen(path.c_str(), "rb");
-    size_t r_count = std::fread(buf, sizeof(buf[0]), st.st_size, fd);
+    size_t r_count = std::fread(buf.data(), sizeof(buf[0]), st.st_size, fd);
     if (std::ferror(fd))
     {
         perror(("read error for '"+path+"'").c_str());
@@ -143,7 +143,7 @@ size_t load_xdr(std::string path, XDR_TYPE& xdr_value)
     // copy buf into a msg of correct length (alloc function excludes 4 byte
     // length) because unmarshal requires that
     xdr::msg_ptr m = xdr::message_t::alloc(r_count - 4);
-    std::copy(buf, buf + r_count, m->raw_data());
+    std::copy(buf.data(), buf.data() + r_count, m->raw_data());
     xdr::xdr_from_msg(m, xdr_value);
     return r_count;
 }
