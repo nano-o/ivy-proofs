@@ -44,6 +44,8 @@ namespace paxos_adapter
         return os;
     }
 
+
+
     QSetQuorumChecker::Node int_to_nodeid(int const& n)
     {
         return str_to_nid(std::to_string(n));
@@ -55,6 +57,8 @@ namespace paxos_adapter
         for (auto const& n: ns) { x.insert(int_to_nodeid(n)); }
         return x;
     }
+
+
 
     // call from ivy array_set with self.repr
     bool is_quorum(int const& n, std::vector<int> const& ns)
