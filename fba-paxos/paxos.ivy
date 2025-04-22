@@ -13,7 +13,7 @@ instance key : scp_nodeid
 instance qset : scp_qset
 
 instance node : iterable
-instance node_set : array_set_with_qset_quorum_check(node)
+instance node_set : array_map_with_qset_quorum_check(node)
 type value
 instance round : unbounded_sequence
 

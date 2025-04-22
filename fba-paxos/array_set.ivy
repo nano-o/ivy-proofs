@@ -7,17 +7,17 @@
 include collections
 include order
 
-module array_set_with_qset_quorum_check(range) = {
-    # range must be an instance of iterable
+module array_map_with_qset_quorum_check(domain) = {
+    # domain must be an instance of iterable
 
     type this
     alias t = this
 
-    relation member(E:range, S:t)
-    relation is_quorum(E:range, S:t)
+    relation member(E:domain, S:t)
+    relation is_quorum(E:domain, S:t)
 
     action emptyset returns (s:t)
-    action add(s:t, e: range) returns (s:t)
+    action add(s:t, e: domain) returns (s:t)
 
     specification {
         after emptyset {
@@ -31,7 +31,7 @@ module array_set_with_qset_quorum_check(range) = {
     }
 
     implementation {
-        instance arr : array(index, range)
+        instance arr : array(index, domain)
         destructor repr(S:this): arr
         definition member(E,S) = exists I. 0 <= I & I < repr(S).end & repr(S).value(I) = E
 
@@ -71,11 +71,11 @@ module array_set_with_qset_quorum_check(range) = {
 
         implementation {
             # C++ implementation
-            definition is_quorum(n:range, s:t) = <<< paxos_adapter::is_quorum(`n`, `s`.repr) >>>
+            definition is_quorum(n:domain, s:t) = <<< paxos_adapter::is_quorum(`n`, `s`.repr) >>>
         }
     }
 
-    isolate iso = this with range
+    isolate iso = this with domain
 }
 
 # uncomment to check in isolation:
