@@ -7,8 +7,9 @@
 include collections
 include order
 
-module array_map_with_qset_quorum_check(domain) = {
+module array_map_with_qset_quorum_check(domain, range) = {
     # domain must be an instance of iterable
+    # range must be an instance of qset
 
     type this
     alias t = this
@@ -17,7 +18,7 @@ module array_map_with_qset_quorum_check(domain) = {
     relation is_quorum(E:domain, S:t)
 
     action emptyset returns (s:t)
-    action add(s:t, e: domain) returns (s:t)
+    action add(s:t, e: domain, v: range) returns (s:t)
 
     specification {
         after emptyset {
