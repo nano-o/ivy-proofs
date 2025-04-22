@@ -61,20 +61,16 @@ namespace paxos_adapter
 
 
     // call from ivy array_set with self.repr
-    bool is_quorum(int const& n, std::vector<int> const& ns)
+    bool is_quorum(
+                                            int const& n, // current node's ivy nodeid
+            //            stellar::SCPQuorumSet const& q, // current node's qset
+                              std::vector<int> const& ns, // candidate sets' ivy nodeids
+            std::vector<stellar::SCPQuorumSet> const& qs  // candidate sets' qsets
+            )
     {
-        // TODO-1: instead of loading this static qset-config for every
-        // is_quorum call, instantiate it once when array_set is created
-        //
-        // TODO-2: after instantiating this static qset-config once on start,
-        // change to instantiating an empty one on start; then use information
-        // received in messages to update it during runtime
-        std::fstream node_qsets_fd("qset_config.json");
-        QSetQuorumChecker::NodeXS node_qsets = load_jnodeslices(node_qsets_fd);
-
         //// Step 1. Convert the inputs to node identifiers.
 
-        // TODO: the self-nid should be a key not munged int-data
+        // TODO: the self-nid should be a key, not munged int-data
         QSetQuorumChecker::Node self = int_to_nodeid(n);
         // TODO: the candidate set should be a set of keys, not munged int-data
         QSetQuorumChecker::X candidate = arrayset_to_slice(ns);
@@ -83,25 +79,15 @@ namespace paxos_adapter
 
         // fetch the self-node's qset
         QSetQuorumChecker::XS self_qset;
-        {
-            auto const& found = node_qsets.find(self);
-            if (found == node_qsets.end())
-            {
-                throw "self's qset not found in node_qsets"; // FIXME: use an exception
-            }
-            self_qset = found->second;
-        }
+        // FIXME: currently this is uninitialized
+        // TODO: pass it in
 
         // fetch each qset for nodes in the candidate
         QSetQuorumChecker::NodeXS candidate_qsets(nodeid_cmp);
-        for(auto const& nid: candidate)
+        assert(ns.size() == qs.size()); // ns and qs are keys and values, so they must correspond
+        for(int i=0; i<ns.size(); i+=1)
         {
-            auto const& found = node_qsets.find(nid);
-            if (found == node_qsets.end())
-            {
-                throw "candidate node's qset not found in node_qsets"; // FIXME: use an exception
-            }
-            candidate_qsets.insert(*found);
+            candidate_qsets.insert({int_to_nodeid(ns[i]), qs[i]});
         }
 
         QSetQuorumChecker qsqc;

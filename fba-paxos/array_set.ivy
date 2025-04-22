@@ -33,18 +33,25 @@ module array_map_with_qset_quorum_check(domain, range) = {
 
     implementation {
         instance arr : array(index, domain)
-        destructor repr(S:this): arr
-        definition member(E,S) = exists I. 0 <= I & I < repr(S).end & repr(S).value(I) = E
+        instance arr2 : array(index, range)
+        type soa = struct {ks : arr, vs : arr2}
+        destructor repr(S:this): soa # XXX it would be simpler to use the old `repr(…): arr` and an ivy function domain→range
+        definition member(E,S) = exists I. 0 <= I & I < repr(S).ks.end & repr(S).ks.value(I) = E
+        # XXX should we have an invariant that states the arrays are the same size?
+
+        function index_of(K:domain): index
 
         implement emptyset {
-            repr(s) := arr.empty()
+            repr(s).ks := arr.empty();
+            repr(s).vs := arr2.empty();
         }
 
         implement add {
-            # TODO: maintain a mapping domain->range
             if ~member(e, s) {
-                repr(s) := repr(s).append(e)
+                index_of(e) := repr(s).ks.size();
+                repr(s).ks := repr(s).ks.append(e)
             }
+            repr(s).vs := repr(s).vs.set(index_of(e), v);
         }
 
         <<< impl
@@ -82,7 +89,8 @@ module array_map_with_qset_quorum_check(domain, range) = {
 
         implementation {
             # C++ implementation
-            definition is_quorum(n:domain, s:t) = <<< paxos_adapter::is_quorum(`n`, `s`.repr) >>>
+            definition is_quorum(n:domain, s:t) =
+                <<<paxos_adapter::is_quorum(`n`, `s`.repr.ks, ivyqsets_to_qsets(`s`.repr.vs))>>>
         }
     }
 
