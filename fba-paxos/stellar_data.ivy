@@ -33,10 +33,10 @@ module scp_qset = {
         }
 
         template<>
-        void __deser<`t`>(ivy_deser& imp, `t`& qs)
+        void __deser<`t`>(ivy_deser& inp, `t`& qs)
         {
             std::string s;
-            imp.get(s);
+            inp.get(s);
             paxos_adapter::AdaptedQSet::decode(s, qs);
         }
 
