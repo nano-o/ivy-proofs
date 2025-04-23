@@ -47,11 +47,13 @@ module array_map_with_qset_quorum_check(domain, range) = {
         }
 
         implement add {
-            if ~member(k, s) {
+            if member(k, s) {
+                repr(s).vs := repr(s).vs.set(index_of(k), v);
+            } else {
                 index_of(k) := repr(s).ks.size();
-                repr(s).ks := repr(s).ks.append(k)
+                repr(s).ks := repr(s).ks.append(k);
+                repr(s).vs := repr(s).vs.append(v);
             }
-            repr(s).vs := repr(s).vs.set(index_of(k), v);
         }
 
         <<< impl
