@@ -18,7 +18,7 @@ module array_map_with_qset_quorum_check(domain, range) = {
     relation is_quorum(E:domain, S:t)
 
     action emptyset returns (s:t)
-    action add(s:t, e: domain, v: range) returns (s:t)
+    action add(s:t, k: domain, v: range) returns (s:t)
 
     specification {
         after emptyset {
@@ -26,7 +26,7 @@ module array_map_with_qset_quorum_check(domain, range) = {
         }
 
         after add {
-            ensure member(E,s) = (member(E , old s) | E = e)
+            ensure member(E,s) = (member(E , old s) | E = k)
         }
 
     }
@@ -47,11 +47,11 @@ module array_map_with_qset_quorum_check(domain, range) = {
         }
 
         implement add {
-            if ~member(e, s) {
-                index_of(e) := repr(s).ks.size();
-                repr(s).ks := repr(s).ks.append(e)
+            if ~member(k, s) {
+                index_of(k) := repr(s).ks.size();
+                repr(s).ks := repr(s).ks.append(k)
             }
-            repr(s).vs := repr(s).vs.set(index_of(e), v);
+            repr(s).vs := repr(s).vs.set(index_of(k), v);
         }
 
         <<< impl
