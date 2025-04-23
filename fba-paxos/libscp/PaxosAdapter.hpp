@@ -60,6 +60,28 @@ namespace paxos_adapter
 
 
 
+    std::vector<long long> chars_to_llongs(std::string s)
+    {
+        size_t len = (s.length() / sizeof(long long)) + (0 != s.length() % sizeof(long long));
+        std::vector<long long> out(len);
+        //DEBUG printf("lllen:%zu, strlen:%zu, outlen:%zu,%zu\n", sizeof(long long), s.length(), len, out.size());
+        assert(s.length() <= out.size() * sizeof(long long)); // enough space?
+        std::copy(s.begin(), s.end(), (char *) out.data()); // reinterpret the output vector as a char array
+        //DEBUG for (auto ll: out) { printf("[%-16llx](", ll); for(int i=0; i<sizeof(long long); i += 1) { printf("%c,", *(((char *) &ll) + i)); }; printf(")\n"); }
+        return out;
+    }
+
+    std::string llongs_to_chars(size_t sl, std::vector<long long> xs)
+    {
+        assert(sl <= xs.size() * sizeof(long long)); // enough space?
+        std::string s(sl, '\0');
+        std::copy((char *) xs.data(), ((char *) xs.data()) + sl, (char *) s.data()); // reinterpret the input vector as a char array
+        //DEBUG for (auto c: s) { printf("%c,", c); } printf("\n");
+        return s;
+    }
+
+
+
     // call from ivy array_set with self.repr
     bool is_quorum(
                                             int const& n, // current node's ivy nodeid

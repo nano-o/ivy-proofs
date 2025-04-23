@@ -29,15 +29,27 @@ module scp_qset = {
         template<>
         void __ser<`t`>(ivy_ser& res, `t` const& qs)
         {
-            res.set(qs.encode());
+            std::string s = qs.encode();
+            auto xs = paxos_adapter::chars_to_llongs(s);
+            res.set((long long) s.length());
+            res.set((long long) xs.size());
+            for (auto const& x: xs) { res.set(x); }
         }
 
         template<>
         void __deser<`t`>(ivy_deser& inp, `t`& qs)
         {
-            std::string s;
-            inp.get(s);
-            paxos_adapter::AdaptedQSet::decode(s, qs);
+            long long sl, xsl;
+            inp.get(sl);
+            inp.get(xsl);
+            std::vector<long long> xs;
+            for (int i=0; i<xsl; i+=1)
+            {
+                long long x;
+                inp.get(x);
+                xs.push_back(x);
+            }
+            paxos_adapter::AdaptedQSet::decode(paxos_adapter::llongs_to_chars(sl, xs), qs);
         }
 
         template<>
