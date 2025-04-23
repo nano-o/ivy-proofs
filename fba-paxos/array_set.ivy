@@ -15,7 +15,7 @@ module array_map_with_qset_quorum_check(domain, range) = {
     alias t = this
 
     relation member(E:domain, S:t)
-    relation is_quorum(E:domain, S:t)
+    relation is_quorum(E:domain, C:range, S:t)
 
     action emptyset returns (s:t)
     action add(s:t, k: domain, v: range) returns (s:t)
@@ -68,7 +68,7 @@ module array_map_with_qset_quorum_check(domain, range) = {
 
     trusted isolate is_quorum_iso = {
         explicit invariant [quorums_intersect]
-            (exists E1, E2. is_quorum(E1, S1) & is_quorum(E2, S2)) -> exists N . member(N,S1) & member(N,S2)
+            (exists E1,C1, E2,C2. is_quorum(E1,C1, S1) & is_quorum(E2,C2, S2)) -> exists N . member(N,S1) & member(N,S2)
         # Terminology:
         #   slice : {node}
         #   quorum : {node}
@@ -83,16 +83,16 @@ module array_map_with_qset_quorum_check(domain, range) = {
         # information might be insufficient, and so it might not hold if you
         # had all distributed information. Therefore we take as an assumption.
         #
-        # is_quorum(S:quorum, L:node) : bool
+        # is_quorum(E:node,C:config, S:quorum) : bool
         #
-        # A quorum is only useful to the current node if it's a quorum /and/
-        # the current node recognizes it (if the quorum contains one of this
-        # node's slices).
+        # A candidate quorum (S) is only useful to the current node (E) if S
+        # forms a quorum and E recognizes S. E recognizes S if S contains one
+        # of E's slices (specified by E's config C).
 
         implementation {
             # C++ implementation
-            definition is_quorum(n:domain, s:t) =
-                <<<paxos_adapter::is_quorum(`n`, `s`.repr.ks, ivyqsets_to_qsets(`s`.repr.vs))>>>
+            definition is_quorum(n:domain, q:range, s:t) =
+                <<<paxos_adapter::is_quorum(`n`, `q`, `s`.repr.ks, ivyqsets_to_qsets(`s`.repr.vs))>>>
         }
     }
 

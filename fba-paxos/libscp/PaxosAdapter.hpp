@@ -85,7 +85,7 @@ namespace paxos_adapter
     // call from ivy array_set with self.repr
     bool is_quorum(
                                             int const& n, // current node's ivy nodeid
-            //            stellar::SCPQuorumSet const& q, // current node's qset
+                          stellar::SCPQuorumSet const& self_qset, // current node's qset
                               std::vector<int> const& ns, // candidate sets' ivy nodeids
             std::vector<stellar::SCPQuorumSet> const& qs  // candidate sets' qsets
             )
@@ -99,11 +99,6 @@ namespace paxos_adapter
 
         //// Step 2. Fetch a QSet for the self-node and each candidate-node.
 
-        // fetch the self-node's qset
-        QSetQuorumChecker::XS self_qset;
-        // FIXME: currently this is uninitialized
-        // TODO: pass it in
-
         // fetch each qset for nodes in the candidate
         QSetQuorumChecker::NodeXS candidate_qsets(nodeid_cmp);
         assert(ns.size() == qs.size()); // ns and qs are keys and values, so they must correspond
@@ -113,7 +108,6 @@ namespace paxos_adapter
         }
 
         QSetQuorumChecker qsqc;
-
         // return true if a quorum was found in candidate set and the current
         // node has a quorum slice in the candidate set
         return !qsqc.findQuorum(candidate_qsets).empty()
