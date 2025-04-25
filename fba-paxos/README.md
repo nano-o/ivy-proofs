@@ -419,18 +419,7 @@ We'd need to have a discussion with the stellar core team about how they use
 these XDR types and whether they want to have such operators defined for them.
 
 #### (Medium) Refactor the (de)serialization of `scp_qset` and/or `stellar::SCPQuorumSet`
-#### (Medium) Reorganize the repo as a C++ project
 
-This project and makefile are set up as an IVy project with some C++ code that
-has grown around it.
-The problem is that I've certainly done a few things wrong, e.g., the C++
-libraries are all `*.hpp` files complete with preprocessor macros to prevent
-double inclusion.
-Presumably we'd prefer to have a more traditional build-the-object-files and
-link-the-object-files approach that allows separate compilation.
-The current approach requires all the source to be available for a single `g++`
-call.
-To do this we'd need to also separate out some headers for the cpp libraries.
 
 #### (Medium) Implement `scp_node` as a wrapper for `stellar::NodeID`
 
@@ -496,3 +485,16 @@ side.
 One thing that makes this confusing is that it means different nodes will learn
 a different mapping of `node` numbers to `stellar::NodeID`, because the `node`
 numbers will be assigned on a first-come-first-served basis.
+
+#### (Large) Reorganize the repo as a C++ project
+
+This project and makefile are set up as an IVy project with some C++ code that
+has grown around it.
+The problem is that I've certainly done a few things wrong, e.g., the C++
+libraries are all `*.hpp` files complete with preprocessor macros to prevent
+double inclusion.
+Presumably we'd prefer to have a more traditional build-the-object-files and
+link-the-object-files approach that allows separate compilation.
+The current approach requires all the source to be available for a single `g++`
+call.
+To do this we'd need to also separate out some headers for the cpp libraries.
