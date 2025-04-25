@@ -23,7 +23,7 @@ fact.
 ### Level 1 description (most abstract)
 
 Highest level descirption. Uses a global view of state in all nodes.
-After following [Install IVy], verify this isolate with:
+After following [Install IVy](#Install-IVy), verify this isolate with:
 ```bash
 ivy_check isolate=level_1 paxos.ivy
 ```
@@ -32,7 +32,7 @@ ivy_check isolate=level_1 paxos.ivy
 
 Also uses a global view of state in all nodes, but makes more messages explicit
 than in Level 1.
-After following [Install IVy], verify this isolate with:
+After following [Install IVy](#Install-IVy), verify this isolate with:
 ```bash
 ivy_check isolate=level_2 paxos.ivy
 ```
@@ -40,7 +40,7 @@ ivy_check isolate=level_2 paxos.ivy
 ### Implementation (most concrete)
 
 Runnable implementation. Uses a local view of state in one node.
-After following [Install IVy], verify this isolate with:
+After following [Install IVy](#Install-IVy), verify this isolate with:
 ```bash
 ivy_check isolate=impl complete=fo paxos.ivy
 ```
@@ -65,8 +65,8 @@ xcode-select --install
 
 ### Install IVy
 
-Follow the instructions on the [IVy
-website](https://kenmcmil.github.io/ivy/install.html), but prefer to use a
+Follow the instructions on the
+[IVy website](https://kenmcmil.github.io/ivy/install.html), but prefer to use a
 python virtual environment instead of installing things globally.
 Keep in mind that you may need a specific version of some dependencies, such as
 Z3. We used the following versions:
@@ -115,7 +115,7 @@ Now build with the following command.
 ```bash
 make clean && make
 ```
-This will build all of the executables described [Build individual executables].
+This will build all of the executables described [Build individual executables](#Build-individual-executables).
 
 ### Build individual executables
 
