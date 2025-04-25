@@ -276,7 +276,8 @@ TODO Where are things?
 
 #### (Small) Rename `array_set.ivy`
 
-
+The `array_map_with_qset_quorum_check` module in `array_set.ivy` is named
+poorly, as is the file. Pick a better name for both.
 
 #### (Small) Are we checking `is_quorum` correctly?
 
@@ -294,7 +295,7 @@ difference. The current version is the second bulletpoint, but the first
 bulletpoint can be obtained by reverting
 [`4b43404`](https://github.com/plredmond/ivy-proofs/commit/4b43404b1d57e0b6a1152f733cd8128f37a6f3b1)
 
-#### (Small) Refactor the
+#### (Small) Refactor the (de)serialization of `scp_qset`/`stellar::SCPQuorumSet`
 
 TODO
 
