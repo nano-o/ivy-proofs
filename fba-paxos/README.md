@@ -123,12 +123,12 @@ This will build all of the executables described [Build individual executables](
 
   This executable comes from `app/TestCompilation.cpp` and exists for two reasons:
   1. It instantiates some C++ templates to sanity check their compilation.
-  2. It serves to [Test some of the C++ code].
+  2. It serves to [Test some of the C++ code](#Test-some-of-the-C-code).
 
 * `make GenTestData.out`
 
   This executable comes from `app/GenTestData.cpp` and is used to generate test
-  data in XDR format to [Test some of the C++ code].
+  data in XDR format to [Test some of the C++ code](#Test-some-of-the-C-code).
 
   `GenTestData.out` splits a node configuration (a mapping of
   nodes to QSets) from a single json file to a set of XDR files.
@@ -155,16 +155,15 @@ This will build all of the executables described [Build individual executables](
 
   `paxos.out` implements a node that performs a single multi-round
   paxos-consensus process with other nodes over UDP.
-  It is described more completely in [Demo the Paxos-with-QSets
-  implementation].
+  It is described more completely in [Demo the Paxos-with-QSets implementation](#Demo-the-Paxos-with-QSets-implementation).
 
 
 ## Run/demo this project
 
 ### Verify the isolates
 
-After installing all [Dependencies] you can verify all three isolates in
-[Project description] with the command `make check`.
+After installing all [Dependencies](#Dependencies) you can verify all three isolates in
+[Project description](#Project-description) with the command `make check`.
 
 ### Test some of the C++ code
 
@@ -260,7 +259,7 @@ cannot be rehomed under `libscp/` because of a use of `#include "..."` syntax
 
 #### Other directories
 
-* `xdr/` --- Contains the XDR definitions. Mentioned in [C++ Libraries].
+* `xdr/` --- Contains the XDR definitions. Mentioned in [C++ Libraries](#C-Libraries).
 * `hs/` --- Haskell project exploring some high level approaches to quorum
   checking/finding. It is unused and can be deleted if desired.
 
@@ -275,11 +274,11 @@ TODO Where are things?
 
 ### Issues, small to large
 
-#### [Small] Rename `array_set.ivy`
+#### (Small) Rename `array_set.ivy`
 
 
 
-#### [Small] Are we checking `is_quorum` correctly?
+#### (Small) Are we checking `is_quorum` correctly?
 
 There is some question of how `is_quorum` in `libscp/PaxosAdapter.hpp` should work:
 
@@ -295,18 +294,18 @@ difference. The current version is the second bulletpoint, but the first
 bulletpoint can be obtained by reverting
 [`4b43404`](https://github.com/plredmond/ivy-proofs/commit/4b43404b1d57e0b6a1152f733cd8128f37a6f3b1)
 
-#### [Small] Refactor the
+#### (Small) Refactor the
 
 TODO
 
-#### [Small] Give namespaces for the libraries in `libscp/`
+#### (Small) Give namespaces for the libraries in `libscp/`
 
 The libraries in `libscp/` aren't all wrapped in namespaces, so they pollute a
 big happy global namespace.
 It should be pretty easy to wrap them one at a time in a sensible name, and
 then track down the name resolution bugs.
 
-#### [Medium] Reorganize the repo as a C++ project
+#### (Medium) Reorganize the repo as a C++ project
 
 This project and makefile are set up as an IVy project with some C++ code that
 has grown around it.
@@ -319,7 +318,7 @@ The current approach requires all the source to be available for a single `g++`
 call.
 To do this we'd need to also separate out some headers for the cpp libraries.
 
-#### [Medium] Implement `scp_node` as a wrapper for `stellar::NodeID`
+#### (Medium) Implement `scp_node` as a wrapper for `stellar::NodeID`
 
 We will need to complete the wrapper for `stellar::NodeID` which has been
 started as `scp_node` in `stellar_data.ivy`.
@@ -329,7 +328,7 @@ usage of IVy's functionality for wrapping C++ classes.
 Start by researching how IVy's designers intended for C++ classes to be
 accessed and used from IVy.
 
-#### [Medium] Move `paxos_adapter::AdaptedQSet` into `scp_qset`
+#### (Medium) Move `paxos_adapter::AdaptedQSet` into `scp_qset`
 
 `paxos_adapter::AdaptedQSet` in `libscp/PaxosAdapter.hpp` is tightly coupled
 with `scp_qset` in `stellar_data.ivy` because they are effectively the one class.
@@ -349,7 +348,7 @@ Possible resolutions:
   adding those implementations to `stellar::SCPQuorumSet` would be a hindrance
   to possible integration into stellar-core.
 
-#### [Large] Refactor to use `stellar::NodeID`.
+#### (Large) Refactor to use `stellar::NodeID`.
 
 Currently the whole project identifies nodes with an `instance node : iterable` in
 `paxos.ivy` (a sequential numeric identifier).
