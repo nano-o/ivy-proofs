@@ -1,6 +1,8 @@
 # An implementation of single-shot Paxos using SCP Quorums
 
-![This readme is quite long and has a lot of sections. If you're reading this on github, it's recommended to use the table-of-contents button, located in the top right of the readme.](README-toc.png)
+*Note: This readme is quite long and has a lot of sections. If you're reading
+this on github, it's recommended to use the table-of-contents button, located
+in the top right of the readme: ![](README-toc.png)*
 
 
 
