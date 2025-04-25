@@ -279,13 +279,10 @@ b. **`libscp/QSetQuorumChecker.hpp`** --- `QSetQuorumChecker` implements
    There are tests for this implementation in `app/TestCompilation.cpp`.
 
 <details>
-<summary>
-
-**`libscp/StellarJsonXdr.hpp`** --- These functions are used to convert between JSON data
+<summary><b><code>libscp/StellarJsonXdr.hpp</code></b> --- These functions are used to convert between JSON data
 or files and XDR data or files.
 They make use of a vendored copy of <https://github.com/nlohmann/json> in
 `libscp/vendor/json.hpp`.
-
 </summary>
 
 * Working with `stellar::NodeID`:
