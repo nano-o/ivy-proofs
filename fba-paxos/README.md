@@ -295,14 +295,24 @@ important behavior in the IVy and C++ interface.
 * **`paxos_adapter::AdaptedQSet`** wraps `stellar::SCPQuorumSet` to provide it with
   implementations of methods that IVy requires: `__hash`, `operator==`, and
   `operator<<`.
+
 * **`paxos_adapter::is_quorum`** is the IVy interface to `QSetQuorumChecker`.
   This defines how a node checks whether a set of nodes has reached
   quorum-threshold.
 
-#### IVy Libraries
+**`array_set.ivy`** --- Defines a structure tracking a set of nodes and their
+QSets. Provides an interface to the C++ code to check if quorum has been
+reached; the IVy callsite for `paxos_adapter::is_quorum` is here.
 
-* `array_set.ivy` --- Structure tracking a set of nodes (and their QSets) and providing an interface to the C++ code to check if quorum has been reached.
-* `stellar_data.ivy` --- IVy wrappers for XDR data, `stellar::NodeID` and `stellar::SCPQuorumSet`.
+**`stellar_data.ivy`** --- IVy wrappers for XDR data,
+`stellar::SCPQuorumSet` and (eventually) `stellar::NodeID`.
+
+* **`scp_qset`** --- Wrapper for `stellar::SCPQuorumSet`.
+  Includes a static `load` method to load a node's own QSet config.
+  Defines methods that IVy requires: `__ser<…>`, `__deser<…>`, and `_arg<…>`.
+  The type parameter for these methods is the class where `scp_qset` is instantiated.
+
+* **`scp_nodeid`** --- Stub intended to wrap `stellar::NodeID`.
 
 #### How is `stellar::SCPQuorumSet` wrapped for use in IVy?
 
@@ -388,6 +398,25 @@ It's easy to construct these values incorrecly, leading to crashes at runtime.
 
 Audit the use of these types and consider wrapping them to prevent incorrect
 construction.
+Alternatively, give `stellar::NodeID` and `stellar::SCPQuorumSet` global
+operators (seem corresponding issue).
+
+#### (Medium) Decide whether to have global `operator==` and `operator<` for `stellar::NodeID` and `stellar::SCPQuorumSet`
+
+Right now much of the project is made complex because of the use of explicit
+local implementations of `operator==` and `operator<` for `stellar::NodeID` and
+`stellar::SCPQuorumSet`.
+These operators are (respectively) a required part of IVy integration and use
+of the types in C++ sets and maps.
+This situation creates unsafety because, throughout the project it is necessary
+to construct sets and maps by explicitly passing in a comparator function for
+`stellar::NodeID`; if it is forgotten, runtime failures will occur.
+
+Since this project might eventually be a part of stellar core, I was hesitant
+to just define my own global `operator==` and `operator<` for the domain types
+`stellar::NodeID` and `stellar::SCPQuorumSet`.
+We'd need to have a discussion with the stellar core team about how they use
+these XDR types and whether they want to have such operators defined for them.
 
 #### (Medium) Refactor the (de)serialization of `scp_qset` and/or `stellar::SCPQuorumSet`
 #### (Medium) Reorganize the repo as a C++ project
