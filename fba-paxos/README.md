@@ -234,44 +234,34 @@ last is more limited.
 
 ## Maintain this project
 
-### Directory structure
+### Project/build structure
 
-#### Executables
-* Defined in `app/*.cpp`.
-* Built by the implicit makefile target, `%.out`.
-
+**Executables** are defined in `app/*.cpp` and built by the implicit makefile
+target, `%.out`.
 *Exception:* `paxos.out` comes from `paxos.ivy` and is first compiled to
-`app/paxos.cpp` by its own, explicit, makefile target.
+`app/paxos.cpp` by its own explicit makefile target.
 
-#### C++ Libraries
-* Defined in `libscp/{vendor/,}*.hpp`.
-* Included in the build only through explicit `#include <...>` lines.
-  There are no makefile targets for separate compilation of object files.
-
-*Exception:* The XDR definitions are compiled to headers under `xdr/`. They
+**C++ Libraries** are defined in `libscp/{vendor/,}*.hpp`.
+They are included in the build only through explicit `#include <...>` lines.
+There are no makefile targets for separate compilation of object files.
+*Exception:* The XDR definitions are compiled to headers under `xdr/` and
 cannot be rehomed under `libscp/` because of a use of `#include "..."` syntax
 (instead of `#include <...>`) in their generated code.
 
-#### IVy Libraries
-
-* `array_set.ivy` --- Structure tracking a set of nodes (and their QSets) and providing an interface to the C++ code to check if quorum has been reached.
-* `stellar_data.ivy` --- IVy wrappers for XDR data, `stellar::NodeID` and `stellar::SCPQuorumSet`.
-
-#### Other directories
-
-* `xdr/` --- Contains the XDR definitions. Mentioned in [C++ Libraries](#C-Libraries).
-* `hs/` --- Haskell project exploring some high level approaches to quorum
-  checking/finding. It is unused and can be deleted if desired.
+There is also a directory, `hs/`, containing a haskell project that explores some
+high level approaches to quorum checking/finding. It is unused and can be
+deleted if desired.
 
 ### Source code organization
 
-**`libscp/QuorumChecker.hpp`** --- `QuorumChecker` in is an abstract class that defines
-our interface for finding or checking quorums.
+**`libscp/QuorumChecker.hpp`** --- `QuorumChecker` is an abstract class that defines
+the interface for finding or checking quorums.
+It is parameterized over a type of node-ids and a type of slice-collection.
 It has two implementations:
 
 a. **`libscp/NaiveQuorumChecker.hpp`** --- `NaiveQuorumChecker` implements
-   `QuorumChecker` for a slice-collection which is a (naive) vector of sets of
-   node-ids. The node-id type is also a parameter.
+   `QuorumChecker` for a slice-collection which is a (naive) vector-of-sets of
+   node-ids. The node-id type is still a parameter.
 
 b. **`libscp/QSetQuorumChecker.hpp`** --- `QSetQuorumChecker` implements
    `QuorumChecker` for a slice-collection which is a `stellar::SCPQuorumSet`.
@@ -308,6 +298,11 @@ important behavior in the IVy and C++ interface.
 * **`paxos_adapter::is_quorum`** is the IVy interface to `QSetQuorumChecker`.
   This defines how a node checks whether a set of nodes has reached
   quorum-threshold.
+
+#### IVy Libraries
+
+* `array_set.ivy` --- Structure tracking a set of nodes (and their QSets) and providing an interface to the C++ code to check if quorum has been reached.
+* `stellar_data.ivy` --- IVy wrappers for XDR data, `stellar::NodeID` and `stellar::SCPQuorumSet`.
 
 #### How is `stellar::SCPQuorumSet` wrapped for use in IVy?
 
