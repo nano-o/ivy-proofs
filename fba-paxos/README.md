@@ -248,7 +248,7 @@ last is more limited.
 * Included in the build only through explicit `#include <...>` lines.
   There are no makefile targets for separate compilation of object files.
 
-*Exception:* The XDR definitions are compiled to headers under `xdr/`. The
+*Exception:* The XDR definitions are compiled to headers under `xdr/`. They
 cannot be rehomed under `libscp/` because of a use of `#include "..."` syntax
 (instead of `#include <...>`) in their generated code.
 
@@ -265,12 +265,55 @@ cannot be rehomed under `libscp/` because of a use of `#include "..."` syntax
 
 ### Source code organization
 
-TODO Where are things?
+**`libscp/QuorumChecker.hpp`** --- `QuorumChecker` in is an abstract class that defines
+our interface for finding or checking quorums.
+It has two implementations:
 
-* What's the reason for the different hpp files? Why/how have things been logically grouped into each?
-* How does the `scp_qset` module wrap `stellar::SCPQuorumSet`? Whyfor `AdaptedQSet`?
-* Explain serialization
-  * Add a todo for simplifying the serialization
+a. **`libscp/NaiveQuorumChecker.hpp`** --- `NaiveQuorumChecker` implements
+   `QuorumChecker` for a slice-collection which is a (naive) vector of sets of
+   node-ids. The node-id type is also a parameter.
+
+b. **`libscp/QSetQuorumChecker.hpp`** --- `QSetQuorumChecker` implements
+   `QuorumChecker` for a slice-collection which is a `stellar::SCPQuorumSet`.
+   The node-id type is fixed to `stellar::NodeID`.
+   There are tests for this implementation in `app/TestCompilation.cpp`.
+
+<details>
+<summary>
+**`libscp/StellarJsonXdr.hpp`** --- These functions are used to convert between JSON data
+or files and XDR data or files.
+They make use of a vendored copy of <https://github.com/nlohmann/json> in
+`libscp/vendor/json.hpp`.
+</summary>
+
+* Working with `stellar::NodeID`:
+  * Naive introduction from ASCII: `jstr_to_nid`, `str_to_nid`
+  * Naive elimination to ASCII: `nid_to_str`
+  * Equality: `nid_eq`
+* Working with `stellar::SCPQuorumSet`:
+  * Introduction from JSON data in memory: `jqset_to_qset`
+  * Introduction from a JSON-formatted file: `load_jqset`
+  * Introduction from a JSON-formatted file mapping nodes to QSets: `load_jnodesslices`
+  * Equality: `qset_eq`
+* Working with any XDR data:
+  * Introduction from an XDR-formatted file: `load_xdr`
+  * Elimination to an XDR-formatted file: `dump_xdr`
+
+</details>
+
+**`libscp/PaxosAdapter.hpp`** --- Items in the `paxos_adapter` namespace define
+important behavior in the IVy and C++ interface.
+
+* **`paxos_adapter::AdaptedQSet`** wraps `stellar::SCPQuorumSet` to provide it with
+  implementations of methods that IVy requires: `__hash`, `operator==`, and
+  `operator<<`.
+* **`paxos_adapter::is_quorum`** is the IVy interface to `QSetQuorumChecker`.
+  This defines how a node checks whether a set of nodes has reached
+  quorum-threshold.
+
+#### How is `stellar::SCPQuorumSet` wrapped for use in IVy?
+
+#### How is `stellar::SCPQuorumSet` serialized for IVy's UDP library?
 
 ### Issues, small to large
 
@@ -295,10 +338,6 @@ difference. The current version is the second bulletpoint, but the first
 bulletpoint can be obtained by reverting
 [`4b43404`](https://github.com/plredmond/ivy-proofs/commit/4b43404b1d57e0b6a1152f733cd8128f37a6f3b1)
 
-#### (Small) Refactor the (de)serialization of `scp_qset`/`stellar::SCPQuorumSet`
-
-TODO
-
 #### (Small) Give namespaces for the libraries in `libscp/`
 
 The libraries in `libscp/` aren't all wrapped in namespaces, so they pollute a
@@ -306,6 +345,58 @@ big happy global namespace.
 It should be pretty easy to wrap them one at a time in a sensible name, and
 then track down the name resolution bugs.
 
+#### (Small) Rename or remove common type aliases
+
+`QSetQuorumChecker` in `libscp/QSetQuorumChecker.hpp` is the concrete
+instantiation of `QuorumChecker` in `libscp/QuorumChecker.hpp`.
+`QSetQuorumChecker` also defines some public type aliases (`using`
+declarations) for our most common domain types.
+These type aliases are used in other files (grep for `QSetQuorumChecker::`).
+The problem with these type aliases is that, in an effort to make them short,
+they're not meaningful, and quite confusing.
+Rename or remove the type aliases for clarity.
+
+* `QSetQuorumChecker::Node = stellar::NodeID`
+
+  This can probably be removed, since
+  it's clearer to use the canonical name of the domain type,
+  `stellar::NodeID`.
+
+* `QSetQuorumChecker::X = Slice<stellar::NodeID>`
+
+  This should properly be named
+  `QSetQuorumChecker::Slice`, but I don't know the rules for duplicate names.
+  If the duplication is a problem, then also rename `Slice` in
+  `libscp/QuorumChecker.hpp` to something more abstract.
+
+* `QSetQuorumChecker::XS = stellar::SCPQuorumSet`
+
+  This can probably be removed, since
+  it's clearer to use the canonical name of the domain type,
+  `stellar::SCPQuorumSet`.
+
+* `QSetQuorumChecker::XS = std::map<Node, XS, decltype(nodeid_cmp)*>`
+
+  This should be renamed to either `QSetQuorumChecker::NodesSlices` or
+  `QSetQuorumChecker::QSetConfigs`. The difficulty here is making clear in the
+  name that it contains configurations for multiple nodes.
+  We already use the singular term "qset config" elsewhere for a single
+  node's qset, and it would be good to avoid colliding.
+
+#### (Medium) Audit use of sets & maps with explicit comparator
+
+We use types like `std::set<E, decltype(nodeid_cmp)*>`
+and `std::map<K, V, decltype(nodeid_cmp)*>`
+to key on `stellar::NodeID` in quite a few places.
+Values of these types must be constructed by explicitly passing in the
+`nodeid_cmp` comparator function because `stellar::NodeID` doesn't have a
+global comparison operator.
+It's easy to construct these values incorrecly, leading to crashes at runtime.
+
+Audit the use of these types and consider wrapping them to prevent incorrect
+construction.
+
+#### (Medium) Refactor the (de)serialization of `scp_qset` and/or `stellar::SCPQuorumSet`
 #### (Medium) Reorganize the repo as a C++ project
 
 This project and makefile are set up as an IVy project with some C++ code that

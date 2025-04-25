@@ -2,16 +2,6 @@
 #define INCLUDE_NAIVE_QUORUM_CHECKER_HPP_
 
 #include <libscp/QuorumChecker.hpp>
-//#include <algorithm>
-//-#include <xdrpp/types.h>
-//-#include "xdr/Stellar-SCP.h"
-//+#include <xdr/Stellar-SCP.h>
-// #include <iostream>
-//  #include <map>
-//   #include <set>
-//   -#include <vector>
-//
-//
 
 template<class NID>
 using NaiveQuorumSlices = std::vector< Slice<NID> >;
