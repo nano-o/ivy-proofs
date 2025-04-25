@@ -39,6 +39,10 @@ void test_QSetQuorumChecker()
         test_data.insert({k, v});
     }
     // XXX tests ported from https://github.com/nano-o/python-fbas/blob/83c7c7c7b5c8e4fecbefa88cbafac6ad78ba5e33/tests/fbas_graph_test.py#L24-L36
+    //
+    // These tests exercise a pathological example where disagreement and
+    // liveness failures are possible. We don't expect to see configurations
+    // like this in practice.
     QSetQuorumChecker qsqc;
     assert( isQuorum(qsqc, test_restrict(test_data, {"PK11", "PK12", "PK13"})));
     assert( isQuorum(qsqc, test_restrict(test_data, {"PK11", "PK12"})));
