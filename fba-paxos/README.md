@@ -386,6 +386,27 @@ macro that generates both the IVy type `qset` and the class `paxos::qset`.
 
 #### How is `stellar::SCPQuorumSet` serialized for IVy's UDP library?
 
+The entrypoints for serialization and deserialization of `stellar::SCPQuorumSet`
+are the `__ser<paxos::qset>` and `__deser<paxos::qset>` functions defined on
+the `scp_qset` module in `stellar_data.ivy` and instantiated at the name `qset`
+in `paxos.ivy`.
+
+**Serialization in `__ser<paxos::qset>`:** The `stellar::SCPQuorumSet` value is
+encoded to XDR message
+data in `paxos_adapter::AdaptedQSet::encode`, and those bytes are then
+converted to a `std::string` (possibly containing null bytes).
+This string is reinterpreted as a `std::vector<long long>` by `paxos_adapter::chars_to_llongs`.
+Finally the length of the string, the length of the vector, and each of the
+`long long` values, are written to the serialization stream.
+
+**Deserialization in `__deser<paxos::qset>`:** The length of the string and length of the vector are read
+from stream. Then, a number of `long long` values equal to the length of the
+vector are read from the stream and stored in-order in a vector.
+The vector is reinterpreted as a string by `paxos_adapter::llongs_to_chars`.
+Finally, the string is converted back into XDR message data and the message
+data interpreted as a `stellar::SCPQuorumSet` in
+`paxos_adapter::AdaptedQSet::decode`.
+
 ### Issues, small to large
 
 #### (Small) Rename `array_set.ivy`
@@ -488,6 +509,23 @@ these XDR types and whether they want to have such operators defined for them.
 
 #### (Medium) Refactor the (de)serialization of `scp_qset` and/or `stellar::SCPQuorumSet`
 
+Our handling of QSets
+(described in [How is `stellar::SCPQuorumSet` serialized for IVy’s UDP library?](#how-is-stellarscpquorumset-serialized-for-ivys-udp-library)),
+while not optimal, does ultimately put raw XDR message data on the wire.
+However, there are some subtleties to note.
+
+We store the message length three times.
+The first is within the XDR message data, which includes a 4-byte length as a header.
+The second and third are the length of the string and the length of the vector.
+While each of these is currently used by the deserialization process, it should
+be possible to simply write the raw XDR message data to the wire and use its
+4-byte length-header to derive the other two values.
+
+Given the length stored within the XDR message data, $x$, the length of the
+string, $y$, is $y=x+4$.
+Given the length of the string, $y$, and the size of a `long long` in bytes,
+$ll$, the length of the vector, $z$, is $z=\lceil\frac{y}{ll}\rceil$ (or
+integer division, rounded up).
 
 #### (Medium) Implement `scp_node` as a wrapper for `stellar::NodeID`
 
