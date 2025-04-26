@@ -377,12 +377,12 @@ functions needing to be defined against `paxos::qset` (`__ser<paxos::qset>`,
 These implementations, defined in a block of inline C++ in the `scp_qset`
 module, complete the integration.
 
-Since `scp_qset` effectively doesn't exist in the IVy or C++ code beyond the
-instance declaration above, we can think of `scp_qset` as a macro.
-
-In all, the wrapping of `stellar::SCPQuorumSet` for our use required the
+In all, wrapping `stellar::SCPQuorumSet` as the IVy type `qset` required the
 definition of six methods; three on the original class, and three on the
 generated class.
+Since `scp_qset` effectively doesn't exist in the IVy or C++ code beyond its
+definition and the instance declaration above, we can think of `scp_qset` as a
+macro that generates both the IVy type `qset` and the class `paxos::qset`.
 
 #### How is `stellar::SCPQuorumSet` serialized for IVy's UDP library?
 
