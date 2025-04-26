@@ -11,7 +11,7 @@ in the top right of the readme:*
 ## Project description
 
 `paxos.ivy` contains three descriptions of a Paxos consensus algorithm that
-uses with SCP-style quorums.
+uses SCP-style quorums.
 Each description (called an "isolate") is a full specification of the consensus
 algorithm and some of its safety properties, and each can be independently
 verified.
@@ -22,7 +22,7 @@ fact.
 
 ### Level 1 description (most abstract)
 
-Highest level descirption. Uses a global view of state in all nodes.
+High level description using a global view of state in all nodes.
 After following [Install IVy](#Install-IVy), verify this isolate with:
 ```bash
 ivy_check isolate=level_1 paxos.ivy
@@ -39,16 +39,35 @@ ivy_check isolate=level_2 paxos.ivy
 
 ### Implementation (most concrete)
 
-Runnable implementation. Uses a local view of state in one node.
-After following [Install IVy](#Install-IVy), verify this isolate with:
-```bash
-ivy_check isolate=impl complete=fo paxos.ivy
-```
-The argument `complete=fo` tells Ivy not to check that the verification
-conditions are decidable, and indeed there are some problematic quantifier
-alternations. Removing them is left as an exercise. Because of this `ivy_check`
-may get stuck. If so, restart it to try your luck again; it should use a
-different random seed, but if not, do `ivy_check seed=$RANDOM complete=fo paxos.ivy`.
+Runnable implementation using a local view of state in one node.
+
+* After following [Install IVy](#Install-IVy), verify this isolate with:
+
+  ```bash
+  ivy_check isolate=impl complete=fo paxos.ivy
+  ```
+  The argument `complete=fo` tells Ivy not to check that the verification
+  conditions are decidable, and indeed there are some problematic quantifier
+  alternations. Removing them is left as an exercise. Because of this `ivy_check`
+  may get stuck. If so, restart it to try your luck again; it should use a
+  different random seed, but if not, do `ivy_check seed=$RANDOM complete=fo paxos.ivy`.
+* To build the runnable implementation use the following command (also
+  explained in [Build individual executables](#Build-individual-executables)):
+
+  ```
+  make paxos.out
+  ```
+* To run the implementation check out
+  [Demo the Paxos-with-QSets implementation](#demo-the-paxos-with-qsets-implementation).
+
+This implementation uses the `stellar:NodeID` and `stellar::SCPQuorumSet` data
+types generated from the XDR definitions in the `xdr/` directory.
+On startup, a node will load its own QSet configuration from `qset_config.json`
+in the current working directory.
+A node shares its QSet in each message that it sends, allowing all nodes to
+assess the quorum status of a given stage of the Paxos algorithm according to
+the rules of SCP (not a simple majority, as in Paxos).
+
 
 **TODO: What does the proof guarantee? What part of it is TCB?**
 
