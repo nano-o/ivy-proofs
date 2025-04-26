@@ -333,7 +333,56 @@ reached; the IVy callsite for `paxos_adapter::is_quorum` is here.
 
 * **`scp_nodeid`** --- Stub intended to wrap `stellar::NodeID`.
 
-#### How is `stellar::SCPQuorumSet` wrapped for use in IVy?
+#### How is `stellar::SCPQuorumSet` wrapped for use in IVy? *Or, how can you wrap a C++ class for use in IVy?*
+
+The IVy module `scp_qset` in `stellar_data.ivy` is a wrapper for
+`stellar::SCPQuorumSet`.
+The way this is set up and used is somewhat complex, so keep the following C++
+class hierarchy in mind as you read the explanation below.
+
+<div>
+  <center>
+    <code>stellar::SCPQuorumSet</code>
+    <div>&uarr;</div>
+    <code>paxos_adapter::AdaptedQSet</code>
+    <div>&uarr;</div>
+    <code>paxos::qset</code>
+  </center>
+</div>
+
+The IVy module `scp_qset` declares a type and *interprets* that type to be
+the C++ class `paxos_adapter::AdaptedQSet` via the following declaration:
+```
+module scp_qset = {
+   …
+       interpret t -> <<< paxos_adapter::AdaptedQSet >>>
+   …
+}
+```
+IVy expects certain methods (`__hash`, `operator==`, and `operator<<`) to exist
+on any C++ class appearing in an `interpret` statement this way.
+Therefore, we add those methods on `paxos_adapter::AdaptedQSet` instead of
+polluting the methods of the domain object `stellar::SCPQuorumSet`.
+
+We instantiate the IVy module `scp_qset` as an IVy type called `qset` in
+`paxos.ivy` via the following declaration:
+```
+instance qset : scp_qset
+```
+This causes IVy to emit a child class of `paxos_adapter::AdaptedQSet` called
+`paxos::qset`.
+Our further use of the `qset` type in IVy code results in several template
+functions needing to be defined against `paxos::qset` (`__ser<paxos::qset>`,
+`__deser<paxos::qset>`, and `_arg<paxos::qset>`).
+These implementations, defined in a block of inline C++ in the `scp_qset`
+module, complete the integration.
+
+Since `scp_qset` effectively doesn't exist in the IVy or C++ code beyond the
+instance declaration above, we can think of `scp_qset` as a macro.
+
+In all, the wrapping of `stellar::SCPQuorumSet` for our use required the
+definition of six methods; three on the original class, and three on the
+generated class.
 
 #### How is `stellar::SCPQuorumSet` serialized for IVy's UDP library?
 
