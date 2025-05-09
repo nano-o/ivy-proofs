@@ -491,12 +491,12 @@ to key on `stellar::NodeID` in quite a few places.
 Values of these types must be constructed by explicitly passing in the
 `nodeid_cmp` comparator function because `stellar::NodeID` doesn't have a
 global comparison operator.
-It's easy to construct these values incorrecly, leading to crashes at runtime.
+It's easy to construct these values incorrectly, leading to crashes at runtime.
 
 Audit the use of these types and consider wrapping them to prevent incorrect
 construction.
 Alternatively, give `stellar::NodeID` and `stellar::SCPQuorumSet` global
-operators (seem corresponding issue).
+operators (see corresponding issue below).
 
 #### (Medium) Decide whether to have global `operator==` and `operator<` for `stellar::NodeID` and `stellar::SCPQuorumSet`
 
