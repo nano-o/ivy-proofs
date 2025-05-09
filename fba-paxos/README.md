@@ -10,8 +10,12 @@ in the top right of the readme:*
 
 ## Project description
 
-`paxos.ivy` contains three descriptions of a Paxos consensus algorithm that
-uses SCP-style quorums.
+`paxos.ivy` contains three descriptions of a variant of the Paxos consensus
+algorithm.  This is a variant of Paxos, and not exactly Paxos, because it uses
+quorums obtained from a Federated Byzantine Agreement System (Paxos uses simple
+majority quorums).
+Expect for the quorum definition, the voting logic is the same as in Paxos.
+
 Each description (called an "isolate") is a full specification of the consensus
 algorithm and some of its safety properties, and each can be independently
 verified.
@@ -19,6 +23,9 @@ Each isolate refines the previous isolate (earlier isolates are more abstract,
 and later isolates are more concrete); i.e. each isolate describes fewer
 possible behaviors than the previous isolate, and comes with a proof of this
 fact.
+
+The lowest-level description (isolate `impl`) can be automatically extracted to
+obtain a C++  implementation.
 
 ### Level 1 description (most abstract)
 
@@ -51,19 +58,14 @@ Runnable implementation using a local view of state in one node.
   alternations. Removing them is left as an exercise. Because of this `ivy_check`
   may get stuck. If so, restart it to try your luck again; it should use a
   different random seed, but if not, do `ivy_check seed=$RANDOM complete=fo paxos.ivy`.
-* To build the runnable implementation use the following command (also
-  explained in [Build individual executables](#Build-individual-executables)):
-
-  ```
-  make paxos.out
-  ```
+* To build the runnable implementation, [install the dependencies](#Dependencies) and [build  the project](#Build-this-project).
 * To run the implementation check out
   [Demo the Paxos-with-QSets implementation](#demo-the-paxos-with-qsets-implementation).
 
 This implementation uses the `stellar:NodeID` and `stellar::SCPQuorumSet` data
 types generated from the XDR definitions in the `xdr/` directory.
 On startup, a node will load its own QSet configuration from `qset_config.json`
-in the current working directory.
+in the current working directory (a node's QSet configuration specifies it set of slices in a compact form).
 A node shares its QSet in each message that it sends, allowing all nodes to
 assess the quorum status of a given stage of the Paxos algorithm according to
 the rules of SCP (not a simple majority, as in Paxos).
@@ -81,6 +83,8 @@ On macOS this may be initiated by the terminal command:
 ```bash
 xcode-select --install
 ```
+
+On Ubuntu, install the `build-essential` package (`apt install build-essential`).
 
 ### Install IVy
 
@@ -130,7 +134,7 @@ This can usually be accomplished with the following commands:
 export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$HOME/.local/lib/pkgconfig"
 export PATH="$PATH:$HOME/.local/bin"
 ```
-Now build with the following command.
+Now go back to the `fba-paxos` directory and build with the following command.
 ```bash
 make clean && make
 ```
@@ -183,6 +187,8 @@ This will build all of the executables described [Build individual executables](
 
 After installing all [Dependencies](#Dependencies) you can verify all three isolates in
 [Project description](#Project-description) with the command `make check`.
+For `make check` to work, the `ivy_check` command must be available.
+If you installed Ivy in a Python virtual environment that is currently active, this should be the case.
 
 ### Test some of the C++ code
 
