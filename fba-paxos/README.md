@@ -71,9 +71,12 @@ assess the quorum status of a given stage of the Paxos algorithm according to
 the rules of SCP (not a simple majority, as in Paxos).
 
 
-**TODO: What does the proof guarantee? What part of it is TCB?**
+### Proofs
 
+The proofs guarantee that each level is a safe refinement of the level above it, and that the `impl` isolate satisfies the consensus-interface (isolate `interface`) specification.
+However, those guarantees hold only if the quorums satisfy the quorum-intersection property defined in `array_set.ivy`, which is assumed but not verified.
 
+Finally, the C++ code generated from the `impl` isolate is not verified, and the code generator is part of our trusted computing base.
 
 ## Dependencies
 
