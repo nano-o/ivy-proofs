@@ -58,7 +58,7 @@ Runnable implementation using a local view of state in one node.
   alternations. Removing them is left as an exercise. Because of this `ivy_check`
   may get stuck. If so, restart it to try your luck again; it should use a
   different random seed, but if not, do `ivy_check seed=$RANDOM complete=fo paxos.ivy`.
-* To build the runnable implementation, [install the dependencies](#Dependencies) and [build  the project](#Build-this-project).
+* To generate C++ code from the `impl` isolate and build the runnable implementation, [install the dependencies](#Dependencies) and [build  the project](#Build-this-project).
 * To run the implementation check out
   [Demo the Paxos-with-QSets implementation](#demo-the-paxos-with-qsets-implementation).
 
@@ -425,19 +425,18 @@ poorly, as is the file. Pick a better name for both.
 
 #### (Small) Are we checking `is_quorum` correctly?
 
-There is some question of how `is_quorum` in `libscp/PaxosAdapter.hpp` should work:
+There was some question of how `is_quorum` in `libscp/PaxosAdapter.hpp` should work:
 
 * Use `findQuorum` to obtain a quorum set from the candidate set, and then return
-  whether *that quorum set* `containsQuorumSlice` for the current node's QSet.
+  whether *that quorum* `containsQuorumSlice` for the current node's QSet.
 
 * Use `findQuorum` to obtain a quorum set from the candidate set. Return
   *whether that quorum set is non-empty* (meaning a quorum set was found), *and*
   whether *the candidate set* `containsQuorumSlice` for the current node's QSet.
 
 These two are subtly different, but amount to only a few lines of code
-difference. The current version is the second bulletpoint, but the first
-bulletpoint can be obtained by reverting
-[`4b43404`](https://github.com/plredmond/ivy-proofs/commit/4b43404b1d57e0b6a1152f733cd8128f37a6f3b1)
+difference. The correct version is the first one: the node must check that the
+set contains a quorum that it trusts.
 
 #### (Small) Give namespaces for the libraries in `libscp/`
 
